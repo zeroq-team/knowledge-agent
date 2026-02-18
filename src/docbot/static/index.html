@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeroQ Docbot</title>
+<style>
+:root {
+  --void: #0c0c0e;
+  --surface: #141418;
+  --surface-raised: #1c1c22;
+  --surface-overlay: #24242c;
+  --border: #2a2a34;
+  --border-subtle: #1f1f28;
+  --ink: #e2e2e8;
+  --ink-muted: #8888a0;
+  --ink-faint: #55556a;
+  --accent: #6c8cff;
+  --accent-dim: #4a6ad4;
+  --cite-bg: #1a2040;
+  --cite-border: #2e3e6e;
+  --cmd-bg: #1a2a1a;
+  --cmd-border: #2e5e2e;
+  --cmd-color: #4ade80;
+  --success: #4ade80;
+  --warning: #f59e0b;
+  --error: #f87171;
+  --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --radius: 8px;
+  --space: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--void);
+  color: var(--ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+header {
+  display: flex; align-items: center; gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 2) calc(var(--space) * 3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.logo { display: flex; align-items: center; gap: var(--space); font-weight: 600; font-size: 15px; letter-spacing: -0.02em; }
+.logo-mark { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: white; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+.header-actions {
+  margin-left: auto;
+  display: flex; align-items: center; gap: var(--space);
+}
+
+.cmd-badge {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--cmd-bg); border: 1px solid var(--cmd-border);
+  color: var(--cmd-color); padding: 3px 10px; border-radius: 4px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+.cmd-badge .x { cursor: pointer; opacity: 0.6; }
+.cmd-badge .x:hover { opacity: 1; }
+
+.new-chat-btn {
+  background: var(--surface-raised); border: 1px solid var(--border);
+  color: var(--ink-muted); padding: 5px 12px; border-radius: 6px;
+  font-size: 12px; cursor: pointer; font-family: var(--sans);
+  transition: border-color 150ms, color 150ms;
+}
+.new-chat-btn:hover { border-color: var(--accent); color: var(--ink); }
+
+.messages {
+  flex: 1; overflow-y: auto;
+  padding: calc(var(--space) * 3);
+  display: flex; flex-direction: column;
+  gap: calc(var(--space) * 3);
+}
+.messages::-webkit-scrollbar { width: 6px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.msg { max-width: 820px; width: 100%; margin: 0 auto; display: flex; gap: calc(var(--space) * 1.5); }
+.msg-avatar { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; display: grid; place-items: center; font-size: 12px; font-weight: 600; margin-top: 2px; }
+.msg-user .msg-avatar { background: var(--surface-overlay); color: var(--ink-muted); border: 1px solid var(--border); }
+.msg-bot .msg-avatar { background: linear-gradient(135deg, var(--accent), var(--accent-dim)); color: white; }
+.msg-body { flex: 1; min-width: 0; }
+.msg-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin-bottom: calc(var(--space) * 0.5); }
+.msg-content { font-size: 14px; line-height: 1.65; color: var(--ink); }
+.msg-user .msg-content { color: var(--ink-muted); }
+.msg-content p { margin-bottom: calc(var(--space) * 1.5); }
+.msg-content p:last-child { margin-bottom: 0; }
+.msg-content strong { color: var(--ink); font-weight: 600; }
+.msg-content em { color: var(--ink-muted); font-style: italic; }
+.msg-content ul, .msg-content ol { padding-left: calc(var(--space) * 2.5); margin-bottom: calc(var(--space) * 1.5); }
+.msg-content li { margin-bottom: calc(var(--space) * 0.5); }
+.msg-content code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-overlay); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+.msg-content h1, .msg-content h2, .msg-content h3 { margin: calc(var(--space) * 2) 0 var(--space); font-weight: 600; letter-spacing: -0.01em; }
+.msg-content h1 { font-size: 17px; color: var(--accent); }
+.msg-content h2 { font-size: 15px; color: var(--ink); border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space); }
+.msg-content h3 { font-size: 14px; color: var(--ink-muted); }
+.msg-content hr { border: none; border-top: 1px solid var(--border-subtle); margin: calc(var(--space) * 2) 0; }
+.msg-content pre { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; padding: calc(var(--space) * 1.5); overflow-x: auto; margin: calc(var(--space) * 1.5) 0; }
+.msg-content pre code { background: none; border: none; padding: 0; font-size: 12px; }
+
+.citation { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; background: var(--cite-bg); border: 1px solid var(--cite-border); color: var(--accent); padding: 2px 8px; border-radius: 4px; white-space: nowrap; transition: background 150ms; }
+.citation:hover { background: var(--cite-border); }
+
+.citations-bar { display: flex; flex-wrap: wrap; gap: var(--space); margin-top: calc(var(--space) * 1.5); padding-top: calc(var(--space) * 1.5); border-top: 1px solid var(--border-subtle); }
+.citations-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); width: 100%; margin-bottom: calc(var(--space) * 0.25); }
+
+.typing { display: flex; gap: 4px; padding: 8px 0; }
+.typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); animation: blink 1.4s infinite both; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+.input-area { border-top: 1px solid var(--border-subtle); background: var(--surface); padding: calc(var(--space) * 2) calc(var(--space) * 3); flex-shrink: 0; }
+.input-row { max-width: 820px; margin: 0 auto; display: flex; gap: var(--space); align-items: flex-end; }
+.input-wrap { flex: 1; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: flex-end; transition: border-color 150ms; }
+.input-wrap:focus-within { border-color: var(--accent); }
+textarea { flex: 1; background: none; border: none; color: var(--ink); font-family: var(--sans); font-size: 14px; padding: calc(var(--space) * 1.5) calc(var(--space) * 2); resize: none; outline: none; line-height: 1.5; max-height: 120px; }
+textarea::placeholder { color: var(--ink-faint); }
+.send-btn { background: var(--accent); border: none; color: white; width: 36px; height: 36px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; transition: background 150ms, opacity 150ms; }
+.send-btn:hover { background: var(--accent-dim); }
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.send-btn svg { width: 16px; height: 16px; }
+.input-hint { text-align: center; font-size: 11px; color: var(--ink-faint); margin-top: var(--space); font-family: var(--mono); }
+
+/* Command palette dropdown */
+.cmd-dropdown { position: absolute; bottom: 100%; left: 0; right: 0; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: var(--space); overflow: hidden; display: none; }
+.cmd-dropdown.show { display: block; }
+.cmd-option { padding: calc(var(--space) * 1.5) calc(var(--space) * 2); cursor: pointer; display: flex; align-items: center; gap: calc(var(--space) * 1.5); transition: background 150ms; }
+.cmd-option:hover { background: var(--surface-overlay); }
+.cmd-option-name { font-family: var(--mono); font-size: 13px; color: var(--cmd-color); font-weight: 600; }
+.cmd-option-desc { font-size: 12px; color: var(--ink-muted); }
+
+.input-container { position: relative; max-width: 820px; margin: 0 auto; }
+
+.welcome { max-width: 520px; margin: auto; text-align: center; padding: calc(var(--space) * 6) calc(var(--space) * 3); }
+.welcome h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: calc(var(--space) * 1.5); }
+.welcome p { color: var(--ink-muted); font-size: 14px; line-height: 1.6; margin-bottom: calc(var(--space) * 3); }
+.suggestions { display: flex; flex-direction: column; gap: var(--space); }
+.suggestion { background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: calc(var(--space) * 1.5) calc(var(--space) * 2); font-size: 13px; color: var(--ink-muted); text-align: left; cursor: pointer; transition: border-color 150ms, color 150ms; }
+.suggestion:hover { border-color: var(--accent); color: var(--ink); }
+.suggestion .cmd-tag { font-family: var(--mono); font-size: 11px; color: var(--cmd-color); background: var(--cmd-bg); padding: 1px 6px; border-radius: 3px; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">Z</div>
+    ZeroQ Docbot
+  </div>
+  <div class="status-dot"></div>
+  <div class="header-actions">
+    <div class="cmd-badge" id="cmdBadge" style="display:none">
+      <span id="cmdName"></span>
+      <span class="x" onclick="clearCommand()">&times;</span>
+    </div>
+    <button class="new-chat-btn" onclick="newChat()">Nueva conversación</button>
+  </div>
+</header>
+
+<div class="messages" id="messages">
+  <div class="welcome" id="welcome">
+    <h2>Knowledge Base Agent</h2>
+    <p>Pregunta sobre arquitectura, servicios, dependencias u operaciones de ZeroQ. Usa <strong style="color:var(--cmd-color)">/comandos</strong> para flujos guiados.</p>
+    <div class="suggestions">
+      <div class="suggestion" onclick="ask('¿Qué es turn-o-matic y de qué servicios depende?')">¿Qué es turn-o-matic y de qué servicios depende?</div>
+      <div class="suggestion" onclick="ask('¿Cómo está organizada la knowledge base?')">¿Cómo está organizada la knowledge base de ZeroQ?</div>
+      <div class="suggestion" onclick="startCommand('user-story')"><span class="cmd-tag">/user-story</span>Crear una historia de usuario guiada</div>
+    </div>
+  </div>
+</div>
+
+<div class="input-area">
+  <div class="input-container">
+    <div class="cmd-dropdown" id="cmdDropdown"></div>
+    <div class="input-row">
+      <div class="input-wrap">
+        <textarea id="input" rows="1" placeholder="Pregunta algo o escribe / para ver comandos..." autofocus></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+    <div class="input-hint">Enter enviar · Shift+Enter nueva línea · <span style="color:var(--cmd-color)">/</span> comandos</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const welcomeEl = document.getElementById('welcome');
+const cmdDropdown = document.getElementById('cmdDropdown');
+const cmdBadge = document.getElementById('cmdBadge');
+const cmdNameEl = document.getElementById('cmdName');
+
+let conversationHistory = [];
+let activeCommand = null;
+let availableCommands = [];
+
+// Load commands
+fetch(API + '/commands').then(r => r.json()).then(d => {
+  availableCommands = d.commands;
+  cmdDropdown.innerHTML = availableCommands.map(c => `
+    <div class="cmd-option" onclick="startCommand('${c.name.replace('/','')}')">
+      <span class="cmd-option-name">${c.name}</span>
+      <span class="cmd-option-desc">${c.description}</span>
+    </div>
+  `).join('');
+}).catch(() => {});
+
+// Auto-resize + command palette
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+
+  const val = inputEl.value;
+  if (val === '/') {
+    cmdDropdown.classList.add('show');
+  } else if (val.startsWith('/') && val.length > 1) {
+    const filter = val.slice(1).toLowerCase();
+    const matches = availableCommands.filter(c => c.name.includes(filter));
+    if (matches.length > 0) {
+      cmdDropdown.innerHTML = matches.map(c => `
+        <div class="cmd-option" onclick="startCommand('${c.name.replace('/','')}')">
+          <span class="cmd-option-name">${c.name}</span>
+          <span class="cmd-option-desc">${c.description}</span>
+        </div>
+      `).join('');
+      cmdDropdown.classList.add('show');
+    } else {
+      cmdDropdown.classList.remove('show');
+    }
+  } else {
+    cmdDropdown.classList.remove('show');
+  }
+});
+
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === 'Escape') cmdDropdown.classList.remove('show');
+});
+
+function startCommand(name) {
+  activeCommand = name;
+  cmdBadge.style.display = 'flex';
+  cmdNameEl.textContent = '/' + name;
+  cmdDropdown.classList.remove('show');
+  inputEl.value = '';
+  inputEl.placeholder = `Modo: /${name} — Escribe tu mensaje...`;
+  conversationHistory = [];
+
+  if (welcomeEl) welcomeEl.style.display = 'none';
+
+  // Fetch greeting via a first empty exchange
+  sendBtn.disabled = true;
+  addLoading();
+
+  fetch(API + '/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      messages: [{role: 'user', content: `Quiero crear una historia de usuario. Inicia la entrevista.`}],
+      command: activeCommand
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    removeLoading();
+    conversationHistory.push({role: 'user', content: 'Quiero crear una historia de usuario. Inicia la entrevista.'});
+    conversationHistory.push({role: 'assistant', content: data.reply});
+    addMessage('bot', formatMd(data.reply), data.citations);
+    sendBtn.disabled = false;
+    inputEl.focus();
+  })
+  .catch(err => {
+    removeLoading();
+    addMessage('bot', `<p style="color:var(--error)">Error: ${err.message}</p>`, null);
+    sendBtn.disabled = false;
+  });
+}
+
+function clearCommand() {
+  activeCommand = null;
+  cmdBadge.style.display = 'none';
+  inputEl.placeholder = 'Pregunta algo o escribe / para ver comandos...';
+}
+
+function newChat() {
+  conversationHistory = [];
+  clearCommand();
+  messagesEl.innerHTML = '';
+  if (welcomeEl) { messagesEl.appendChild(welcomeEl); welcomeEl.style.display = ''; }
+  inputEl.focus();
+}
+
+function ask(text) {
+  inputEl.value = text;
+  send();
+}
+
+function addMessage(role, html, citations) {
+  if (welcomeEl) welcomeEl.style.display = 'none';
+  const msg = document.createElement('div');
+  msg.className = `msg msg-${role}`;
+  const isBot = role === 'bot';
+  msg.innerHTML = `
+    <div class="msg-avatar">${isBot ? 'Z' : 'U'}</div>
+    <div class="msg-body">
+      <div class="msg-label">${isBot ? (activeCommand ? '/' + activeCommand : 'docbot') : 'tú'}</div>
+      <div class="msg-content">${html}</div>
+      ${citations && citations.length ? `
+        <div class="citations-bar">
+          <div class="citations-label">Fuentes citadas</div>
+          ${citations.map(c => `<span class="citation">${c.repo}:${c.path}#${c.heading || '—'}</span>`).join('')}
+        </div>` : ''}
+    </div>`;
+  messagesEl.appendChild(msg);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return msg;
+}
+
+function addLoading() {
+  const msg = addMessage('bot', '<div class="typing"><span></span><span></span><span></span></div>', null);
+  msg.id = 'loading';
+}
+
+function removeLoading() {
+  const el = document.getElementById('loading');
+  if (el) el.remove();
+}
+
+function formatMd(text) {
+  let html = text
+    .replace(/\[([^\]]+?):([^\]#]+)#([^\]]+)\]/g, '<span class="citation">$1:$2#$3</span>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[ \]/g, '☐')
+    .replace(/\[x\]/gi, '☑');
+
+  // Paragraphs
+  html = html.split('\n\n').map(block => {
+    block = block.trim();
+    if (!block) return '';
+    if (block.startsWith('<h') || block.startsWith('<hr')) return block;
+    if (block.match(/^[\d]+\./m)) {
+      const items = block.split('\n').filter(l => l.trim()).map(l => `<li>${l.replace(/^\d+\.\s*/, '')}</li>`).join('');
+      return `<ol>${items}</ol>`;
+    }
+    if (block.match(/^[-•]/m)) {
+      const items = block.split('\n').filter(l => l.trim()).map(l => `<li>${l.replace(/^[-•]\s*/, '')}</li>`).join('');
+      return `<ul>${items}</ul>`;
+    }
+    return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+
+  return html;
+}
+
+async function send() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  // Check for inline command
+  if (text.startsWith('/') && !activeCommand) {
+    const cmdName = text.split(' ')[0].slice(1);
+    const cmd = availableCommands.find(c => c.name === '/' + cmdName);
+    if (cmd) {
+      startCommand(cmdName);
+      return;
+    }
+  }
+
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  sendBtn.disabled = true;
+  cmdDropdown.classList.remove('show');
+
+  addMessage('user', `<p>${text.replace(/</g, '&lt;')}</p>`, null);
+  addLoading();
+
+  conversationHistory.push({role: 'user', content: text});
+
+  try {
+    let data;
+
+    if (activeCommand) {
+      const res = await fetch(API + '/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ messages: conversationHistory, command: activeCommand })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+      conversationHistory.push({role: 'assistant', content: data.reply});
+    } else {
+      const res = await fetch(API + '/answer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ question: text })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+      data.reply = data.answer;
+    }
+
+    removeLoading();
+    addMessage('bot', formatMd(data.reply), data.citations);
+  } catch (err) {
+    removeLoading();
+    addMessage('bot', `<p style="color:var(--error)">Error: ${err.message}</p>`, null);
+  }
+
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+</script>
+</body>
+</html>
