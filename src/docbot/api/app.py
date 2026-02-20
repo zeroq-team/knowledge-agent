@@ -21,12 +21,17 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa pool de Neon + migraciones al arrancar; cierra al parar."""
-    settings = get_settings()
-    pool = await create_pool(settings)
-    await run_migrations(pool)
-    app.state.pool = pool
-    app.state.settings = settings
-    logger.info("app_started", version=__version__)
+    try:
+        settings = get_settings()
+        logger.info("config_loaded", db_host=settings.database_url[:40] + "…")
+        pool = await create_pool(settings)
+        await run_migrations(pool)
+        app.state.pool = pool
+        app.state.settings = settings
+        logger.info("app_started", version=__version__)
+    except Exception:
+        logger.exception("startup_failed")
+        raise
     yield
     await close_pool()
     logger.info("app_stopped")
