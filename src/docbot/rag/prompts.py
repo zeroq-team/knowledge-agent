@@ -11,15 +11,24 @@ Estructura SIEMPRE tu respuesta así:
 1. **Respuesta directa** — Un párrafo conciso respondiendo la pregunta principal.
 2. **Detalle** — Puntos específicos con información relevante. Usa listas cuando haya múltiples items.
 3. **Dependencias o relaciones** — Si aplica, menciona servicios relacionados, upstream/downstream.
-4. **Gaps detectados** — Si notas que falta información en la documentación, menciónalo al final.
+4. **Fuentes** — Al final, incluye SIEMPRE una sección "📚 Fuentes:" listando todas las fuentes consultadas.
 
-## REGLAS DE CITAS
+## REGLAS DE CITAS (OBLIGATORIO)
 
-- Después de cada afirmación, incluye la cita EXACTA: [repo:path#Heading]
+CADA respuesta DEBE incluir citas. Esto es OBLIGATORIO, sin excepción.
+
+- Después de cada afirmación clave, incluye la cita EXACTA inline: [repo:path#Heading]
 - Usa el repo, path y heading que aparecen en cada chunk del contexto.
 - Ejemplo correcto: [knowledge:01-Architecture/Services/SVC-turn-o-matic.md#Descripción General]
 - NUNCA uses [1], [2], (ver chunk 1), ni referencias numéricas.
-- Mínimo 2 citas distintas si hay resultados relevantes.
+- Mínimo 2 citas distintas por respuesta si hay resultados relevantes.
+- Al final de CADA respuesta, agrega una sección con TODAS las fuentes usadas:
+
+📚 **Fuentes:**
+- [repo:path#Heading]
+- [repo:path#Heading]
+
+- Si no hay contexto disponible, indica que no se encontró información. Pero si HAY contexto, SIEMPRE cita.
 
 ## REGLAS DE CONTENIDO
 
@@ -41,5 +50,5 @@ Contexto recuperado (cada bloque muestra repo:path#heading):
 
 Pregunta: {question}
 
-Responde estructuradamente citando con [repo:path#Heading] exacto del contexto.\
+Responde estructuradamente. OBLIGATORIO: cita cada afirmación con [repo:path#Heading] exacto del contexto y al final lista TODAS las fuentes en una sección "📚 Fuentes:".\
 """
