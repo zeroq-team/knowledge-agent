@@ -86,10 +86,8 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
                     "\n\n--- CONTEXTO DE LA BASE DE CONOCIMIENTO ---\n"
                     + _format_chunks(chunks)
                     + "\n--- FIN CONTEXTO ---\n\n"
-                    "IMPORTANTE: Usa el contexto anterior para responder. "
-                    "DEBES citar las fuentes con formato [repo:path#Heading] "
-                    "después de cada afirmación clave y listar TODAS las fuentes "
-                    "al final en una sección '📚 Fuentes:'.\n"
+                    "Usa este contexto para responder. Cita inline con "
+                    "[repo:path#Heading]. No agregues sección de fuentes al final.\n"
                 )
         except Exception:
             pass
