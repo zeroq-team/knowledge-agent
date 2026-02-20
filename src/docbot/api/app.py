@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
         await run_migrations(pool)
         app.state.pool = pool
         app.state.settings = settings
+
+        from docbot.agent.graph import build_agent
+
+        build_agent(settings, pool)
+        logger.info("agent_initialized")
         logger.info("app_started", version=__version__)
     except Exception:
         logger.exception("startup_failed")
