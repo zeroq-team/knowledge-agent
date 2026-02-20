@@ -24,9 +24,12 @@ class Settings(BaseSettings):
     similarity_threshold: float = 0.7
 
     # --- RAG ---
-    rag_model: str = "gpt-4o-mini"
+    rag_model: str = "gpt-5.2"
     rag_max_context_chunks: int = 8
     rag_temperature: float = 0.1
+
+    # --- CORS ---
+    cors_origins: str = "*"
 
     # --- API ---
     api_host: str = "0.0.0.0"

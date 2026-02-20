@@ -28,3 +28,13 @@ htmlcov/
 .DS_Store
 *.swp
 *.swo
+
+# Editor / AI agent configs
+.cursor/
+.vscode/
+.zed/
+.agents/
+.codex/
+.gemini/
+.mcp.json
+opencode.json

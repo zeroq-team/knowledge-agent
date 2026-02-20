@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from docbot import __version__
 from docbot.config import get_settings
@@ -38,14 +41,22 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # --- CORS: permite frontend externo ---
+    allowed_origins = os.getenv("DOCBOT_CORS_ORIGINS", "*").split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     # --- Middleware: request_id + timing ---
     @app.middleware("http")
     async def request_logging(request: Request, call_next):
         request_id = str(uuid.uuid4())[:8]
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
-
-        import time
 
         t0 = time.time()
         response: Response = await call_next(request)
@@ -75,17 +86,8 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, tags=["chat"])
     app.include_router(sync_router, tags=["indexer"])
 
-    # --- Chat UI (archivos estáticos) ---
-    import pathlib
-
-    from fastapi.responses import FileResponse
-    from fastapi.staticfiles import StaticFiles
-
-    static_dir = pathlib.Path(__file__).resolve().parent.parent / "static"
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
     @app.get("/", include_in_schema=False)
     async def root():
-        return FileResponse(str(static_dir / "index.html"))
+        return {"service": "zeroq-docbot", "version": __version__, "docs": "/docs"}
 
     return app
