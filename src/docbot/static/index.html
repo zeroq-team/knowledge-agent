@@ -199,7 +199,7 @@ textarea::placeholder { color: var(--ink-faint); }
 </div>
 
 <script>
-const API = window.location.origin;
+const API = 'http://127.0.0.1:8000';
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
@@ -413,14 +413,14 @@ async function send() {
       data = await res.json();
       conversationHistory.push({role: 'assistant', content: data.reply});
     } else {
-      const res = await fetch(API + '/answer', {
+      const res = await fetch(API + '/chat', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ question: text })
+        body: JSON.stringify({ messages: conversationHistory })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
-      data.reply = data.answer;
+      conversationHistory.push({role: 'assistant', content: data.reply});
     }
 
     removeLoading();

@@ -59,9 +59,13 @@ async def knowledge_search(
     parts: list[str] = []
     for i, r in enumerate(results, 1):
         heading = f"#{r.heading}" if r.heading else ""
-        parts.append(
-            f"[{i}] {r.repo}:{r.path}{heading} (score: {r.score:.2f})\n{r.snippet}"
-        )
+        ref = f"{r.repo}:{r.path}{heading}"
+        parts.append(f"[{i}] {ref} (score: {r.score:.2f})\n{r.snippet}")
+
+    parts.append(
+        "\n--- IMPORTANTE: Cita estas fuentes en tu respuesta con formato "
+        "[repo:path#Heading] exacto. ---"
+    )
     return "\n\n".join(parts)
 
 
@@ -175,7 +179,13 @@ async def get_service_detail(
     if isinstance(fm, str):
         fm = json.loads(fm)
 
-    lines = [f"## {row['title']}", f"**Tipo:** {row['doc_type']}", f"**Path:** {row['path']}"]
+    ref = f"{row['repo']}:{row['path']}#Metadata"
+    lines = [
+        f"## {row['title']}",
+        f"**Fuente citable:** [{ref}]",
+        f"**Tipo:** {row['doc_type']}",
+        f"**Path:** {row['path']}",
+    ]
 
     fields = [
         ("framework", "Framework"),
