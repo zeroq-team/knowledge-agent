@@ -264,4 +264,55 @@ async def get_service_detail(
     return "\n".join(lines)
 
 
-ALL_TOOLS = [knowledge_search, analyze_impact, list_services, get_service_detail]
+@tool
+async def ask_user(
+    question: Annotated[
+        str,
+        "Pregunta corta y concreta para el usuario en español (1-2 líneas máx).",
+    ],
+    options: Annotated[
+        list[str] | None,
+        "Lista de opciones predefinidas (2-5 valores). None = pregunta abierta.",
+    ] = None,
+    reason: Annotated[
+        str | None,
+        "Por qué necesitas la clarificación (uso interno, no se muestra al usuario).",
+    ] = None,
+) -> str:
+    """Pide al usuario una clarificación antes de continuar buscando.
+
+    El grafo se interrumpe ANTES de ejecutar esta tool: el endpoint /chat
+    detecta el tool_call y devuelve la pregunta al frontend con
+    `type: "clarification"`. Por eso esta función nunca se ejecuta de verdad
+    y el valor de retorno es solo un placeholder defensivo.
+
+    Úsala SOLO en estos casos (proactivo):
+    - Pregunta sobre un cliente con múltiples instancias en la KB
+      (ej: "tema de Pichincha" sin decir Cartelería vs Turnos vs CWA).
+    - RFP/licitación sin que el usuario indique architecture_scope
+      (multi-instancia, centralizada, zeroq-centralizada).
+    - Query muy corta o ambigua que matchea con varios módulos/dominios.
+    - Análisis de impacto sin servicio nombrado claramente.
+
+    Reactivo: si `knowledge_search` devolvió 0 resultados o todos con score < 0.55
+    en un término ambiguo, usa `ask_user` antes de afirmar "no hay info".
+
+    Reglas:
+    - Una sola `ask_user` por turno (nunca encadenes ask_user → ask_user).
+    - Si el usuario YA respondió tu pregunta de clarificación en el historial,
+      NO la vuelvas a llamar: usa la respuesta y busca con `knowledge_search`.
+    - La pregunta debe ser ≤ 2 líneas y, si hay valores discretos, pasar `options`.
+
+    Returns:
+        Placeholder; nunca debería materializarse en un ToolMessage real.
+    """
+    return "ASK_USER_PENDING"
+
+
+ALL_TOOLS = [
+    knowledge_search,
+    analyze_impact,
+    list_services,
+    get_service_detail,
+    ask_user,
+]

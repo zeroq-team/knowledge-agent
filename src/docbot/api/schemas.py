@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -93,10 +95,35 @@ class ChatRequest(BaseModel):
     command: str | None = None
 
 
+class ClarificationOption(BaseModel):
+    """Opción discreta que el frontend renderiza como chip/botón."""
+
+    id: str
+    label: str
+
+
+class ClarificationPayload(BaseModel):
+    """Payload con la pregunta que el agente quiere hacerle al usuario."""
+
+    question: str
+    options: list[ClarificationOption] | None = None
+    allow_free_text: bool = True
+    reason: str | None = None
+
+
 class ChatResponse(BaseModel):
+    """Respuesta del endpoint /chat.
+
+    Cuando `type == "clarification"`, `reply` contiene la pregunta a mostrar
+    y `clarification` trae el detalle estructurado (opciones + flags) para
+    que el frontend renderice un componente especial.
+    """
+
+    type: Literal["answer", "clarification"] = "answer"
     reply: str
-    citations: list[CitationItem]
+    citations: list[CitationItem] = []
     command: str | None = None
+    clarification: ClarificationPayload | None = None
 
 
 # ---------- /commands ----------
