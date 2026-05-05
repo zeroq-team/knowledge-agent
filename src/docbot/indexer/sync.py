@@ -66,16 +66,43 @@ async def _upsert_doc(
     repo: str,
     parsed: ParsedDoc,
 ) -> tuple[str, bool]:
-    """Inserta o actualiza un doc. Retorna (doc_id, changed)."""
+    """Inserta o actualiza un doc. Retorna (doc_id, changed).
+
+    ``changed=True`` indica que el body cambió y por lo tanto hay que
+    re-embedar. Si el body es idéntico pero cambian metadatos derivados
+    (``doc_type`` o ``title``, ej. tras refactor del parser), se actualizan
+    sin re-embedar y se retorna ``changed=False``.
+    """
 
     row = await conn.fetchrow(
-        "SELECT id::text, content_hash FROM docs WHERE repo = $1 AND path = $2 AND source = $3",
+        """
+        SELECT id::text, content_hash, doc_type, title
+        FROM docs WHERE repo = $1 AND path = $2 AND source = $3
+        """,
         repo,
         parsed.path,
         source,
     )
 
     if row and row["content_hash"] == parsed.content_hash:
+        if row["doc_type"] != parsed.doc_type or row["title"] != parsed.title:
+            await conn.execute(
+                """
+                UPDATE docs
+                SET title = $1, doc_type = $2, frontmatter = $3::jsonb,
+                    updated_at = now()
+                WHERE id = $4::uuid
+                """,
+                parsed.title,
+                parsed.doc_type,
+                _dumps_frontmatter(parsed.frontmatter),
+                row["id"],
+            )
+            logger.info(
+                "doc_metadata_refreshed",
+                path=parsed.path,
+                doc_type=parsed.doc_type,
+            )
         return row["id"], False
 
     if row:
