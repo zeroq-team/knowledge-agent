@@ -36,14 +36,33 @@ def _require_deps() -> tuple[asyncpg.Pool, Settings]:
 @tool
 async def knowledge_search(
     query: Annotated[str, "Pregunta o términos de búsqueda en lenguaje natural"],
-    doc_type: Annotated[str | None, "Filtrar por tipo: service, frontend, infrastructure, policy, procedure. None para todos"] = None,
+    doc_type: Annotated[
+        str | None,
+        "Filtra por el campo 'type' del frontmatter. Valores válidos: "
+        "service, feature, infra, integration, policy, procedure, rfp, "
+        "module, agent, runbook. None = todos los tipos.",
+    ] = None,
     top_k: Annotated[int, "Cantidad de resultados a retornar (1-20)"] = 6,
 ) -> str:
-    """Busca en la base de conocimiento de ZeroQ usando búsqueda semántica.
+    """Busca en la base de conocimiento de ZeroQ usando búsqueda semántica híbrida.
 
-    Usa esta tool para responder preguntas sobre servicios, arquitectura,
-    configuración, dependencias, endpoints o cualquier tema documentado.
-    Retorna los fragmentos más relevantes con su ubicación exacta.
+    Es la tool principal para cualquier pregunta cuya respuesta esté documentada.
+    Cubre los 8 dominios del vault: arquitectura, producto, seguridad, operaciones,
+    clientes, RFPs, governance y engineering.
+
+    Ejemplos de uso por dominio:
+    - Arquitectura: query="endpoints de turn-o-matic", doc_type="service"
+    - Infraestructura: query="cómo está configurado Redis", doc_type="infra"
+    - Operaciones: query="qué hago si webapi devuelve 502", doc_type="runbook"
+    - RFPs: query="cifrado en tránsito y en reposo", doc_type="rfp"
+    - Seguridad: query="política de acceso a Cartelería", doc_type="policy"
+    - Producto: query="qué es Cartelería Digital", doc_type="module"
+    - Cliente: query="instancia de Banco Pichincha", doc_type=None (sin filtro)
+    - Governance: query="cómo nombrar un nuevo servicio", doc_type="policy"
+
+    Retorna los fragmentos más relevantes con su ubicación exacta para citar.
+    Si la primera búsqueda no devuelve resultados, reintenta sin doc_type o con
+    sinónimos antes de afirmar que no existe documentación.
     """
     pool, settings = _require_deps()
     query_embedding = await embed_text(query, settings)
@@ -71,15 +90,27 @@ async def knowledge_search(
 
 @tool
 async def analyze_impact(
-    service_name: Annotated[str, "Nombre del servicio a analizar (ej: turn-o-matic, webapi, Redis)"],
+    service_name: Annotated[
+        str,
+        "Nombre del servicio o componente de infraestructura a analizar "
+        "(ej: turn-o-matic, webapi, Redis, RabbitMQ, MongoDB)",
+    ],
     depth: Annotated[int, "Profundidad del análisis de dependencias (1-3)"] = 2,
 ) -> str:
-    """Analiza el impacto de un servicio: qué otros servicios dependen de él.
+    """Analiza el blast radius de un servicio o componente de infraestructura.
+
+    Recorre el grafo `related_services`/`depends_on` para determinar qué otros
+    componentes se verían afectados si el servicio analizado falla.
 
     Usa esta tool cuando el usuario pregunte cosas como:
-    - "¿Qué pasa si cae Redis/MongoDB/turn-o-matic?"
+    - "¿Qué pasa si cae Redis / MongoDB / turn-o-matic / RabbitMQ?"
     - "¿Qué servicios se ven afectados si X deja de funcionar?"
     - "¿Quién depende de este servicio?"
+    - "Análisis de impacto antes de un mantenimiento de X"
+
+    Para preguntas operativas concretas ("se cayó X, qué hago"), combina esta
+    tool con `knowledge_search(doc_type="runbook")` para obtener los pasos de
+    mitigación documentados.
 
     Retorna el grafo de dependencias con nodos y relaciones.
     """
@@ -108,14 +139,25 @@ async def analyze_impact(
 
 @tool
 async def list_services(
-    doc_type: Annotated[str | None, "Filtrar por tipo: service, frontend, infrastructure, policy, procedure. None para todos"] = None,
+    doc_type: Annotated[
+        str | None,
+        "Filtra por el campo 'type' del frontmatter. Valores válidos: "
+        "service, feature, infra, integration, policy, procedure, rfp, "
+        "module, agent, runbook. None = todos los tipos.",
+    ] = None,
 ) -> str:
-    """Lista todos los documentos/servicios indexados en la base de conocimiento.
+    """Lista todos los documentos indexados en la base de conocimiento, agrupados por tipo.
 
-    Usa esta tool cuando el usuario pregunte:
-    - "¿Qué servicios hay documentados?"
-    - "¿Cuántos documentos tenemos?"
-    - "Muéstrame los servicios de tipo frontend"
+    Usa esta tool cuando el usuario quiera un inventario o catálogo:
+    - "¿Qué servicios hay documentados?" → doc_type="service"
+    - "¿Cuántos runbooks tenemos?" → doc_type="runbook"
+    - "Lista todas las políticas de seguridad" → doc_type="policy"
+    - "¿Qué RFPs están documentadas?" → doc_type="rfp"
+    - "Muéstrame los módulos de producto" → doc_type="module"
+    - "Inventario completo de la KB" → doc_type=None
+
+    Retorna los documentos con su criticidad y status para identificar rápidamente
+    items mission-critical o documentos en draft.
     """
     pool, _ = _require_deps()
 
@@ -151,13 +193,23 @@ async def list_services(
 
 @tool
 async def get_service_detail(
-    service_name: Annotated[str, "Nombre del servicio (ej: turn-o-matic, webapi, web-module)"],
+    service_name: Annotated[
+        str,
+        "Nombre o palabra clave del documento (ej: turn-o-matic, webapi, "
+        "web-module, MongoDB, Carteleria, RFP-Security-Encryption)",
+    ],
 ) -> str:
-    """Obtiene los metadatos completos de un servicio desde su frontmatter.
+    """Obtiene los metadatos completos de un documento desde su frontmatter.
 
-    Usa esta tool para obtener rápidamente: framework, runtime, criticality,
-    dependencias, bases de datos, colas, caché, status y servicios relacionados
-    de un servicio específico. Es más rápido que buscar en los chunks.
+    Aunque la tool se llama `get_service_detail`, funciona para cualquier tipo
+    de documento (servicio, infraestructura, módulo, RFP, runbook, política).
+    Es la forma más rápida de obtener: framework, runtime, criticality,
+    dependencias, bases de datos, colas, caché, status, compliance_tags y
+    servicios relacionados.
+
+    Úsala como primer paso cuando el usuario pregunte por un componente
+    específico por nombre. Combínala con `knowledge_search` para obtener
+    el contenido textual de las secciones.
     """
     pool, _ = _require_deps()
 
