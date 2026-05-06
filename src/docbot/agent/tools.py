@@ -40,7 +40,7 @@ async def knowledge_search(
         str | None,
         "Filtra por el campo 'type' del frontmatter. Valores válidos: "
         "service, feature, infra, integration, policy, procedure, rfp, "
-        "module, agent, runbook. None = todos los tipos.",
+        "module, agent, skill, runbook. None = todos los tipos.",
     ] = None,
     top_k: Annotated[int, "Cantidad de resultados a retornar (1-20)"] = 6,
 ) -> str:
@@ -59,6 +59,8 @@ async def knowledge_search(
     - Producto: query="qué es Cartelería Digital", doc_type="module"
     - Cliente: query="instancia de Banco Pichincha", doc_type=None (sin filtro)
     - Governance: query="cómo nombrar un nuevo servicio", doc_type="policy"
+    - Skills (capacidades AI): query="skill de resiliencia code review", doc_type="skill"
+    - Agentes AI: query="cómo está armado el Docbot", doc_type="agent"
 
     Retorna los fragmentos más relevantes con su ubicación exacta para citar.
     Si la primera búsqueda no devuelve resultados, reintenta sin doc_type o con
@@ -143,7 +145,7 @@ async def list_services(
         str | None,
         "Filtra por el campo 'type' del frontmatter. Valores válidos: "
         "service, feature, infra, integration, policy, procedure, rfp, "
-        "module, agent, runbook. None = todos los tipos.",
+        "module, agent, skill, runbook. None = todos los tipos.",
     ] = None,
 ) -> str:
     """Lista todos los documentos indexados en la base de conocimiento, agrupados por tipo.
@@ -154,6 +156,7 @@ async def list_services(
     - "Lista todas las políticas de seguridad" → doc_type="policy"
     - "¿Qué RFPs están documentadas?" → doc_type="rfp"
     - "Muéstrame los módulos de producto" → doc_type="module"
+    - "Qué skills de IA tenemos" → doc_type="skill"
     - "Inventario completo de la KB" → doc_type=None
 
     Retorna los documentos con su criticidad y status para identificar rápidamente

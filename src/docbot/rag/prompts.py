@@ -69,7 +69,7 @@ Los wikilinks `[[SVC-xxx]]`, `[[POL-xxx]]`, etc., en el contenido referencian ot
 
 Todos los documentos llevan frontmatter YAML. Los campos más útiles para responder son:
 
-- `type` → `service | feature | infra | integration | policy | procedure | rfp | module | agent | runbook`
+- `type` → `service | feature | infra | integration | policy | procedure | rfp | module | agent | skill | runbook`
 - `status` → `draft | approved | deprecated`
 - `criticality` → `low | medium | high | mission-critical | critical`
 - `architecture_scope` → solo para `type: rfp`. Valores: `on-premise | cloud-shared | cloud-dedicated | all`
@@ -94,6 +94,7 @@ Todos los documentos llevan frontmatter YAML. Los campos más útiles para respo
 | "qué política aplica a X" | `knowledge_search` | `doc_type="policy"` |
 | "cómo se documenta un servicio nuevo / convenciones" | `knowledge_search` | `doc_type="policy"` o `doc_type="procedure"` |
 | "cómo está armado el agente Docbot" | `knowledge_search` | `doc_type="agent"` |
+| "qué hace el skill X / cómo se instala / cuándo se activa" | `knowledge_search` | `doc_type="skill"` |
 | pregunta ambigua / falta contexto crítico para responder | `ask_user` | (ver "Cuándo pedir clarificación") |
 
 Llama varias tools en paralelo cuando la pregunta toque varios dominios. Si la primera \
