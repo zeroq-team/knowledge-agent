@@ -191,6 +191,19 @@ async def list_conversations(
     return [dict(r) for r in rows]
 
 
+async def delete_conversation(conversation_id: str) -> bool:
+    """Elimina una conversación (cascade a mensajes + feedback). True si borró algo."""
+    cid = _valid_uuid(conversation_id)
+    if cid is None:
+        return False
+    pool = get_pool()
+    result = await pool.execute("DELETE FROM conversations WHERE id = $1", cid)
+    deleted = result.rsplit(" ", 1)[-1] not in ("0", "")
+    if deleted:
+        logger.info("conversation_deleted", conversation_id=cid)
+    return deleted
+
+
 async def get_conversation(conversation_id: str) -> dict | None:
     """Hilo completo de una conversación: mensajes con metadata + feedback."""
     cid = _valid_uuid(conversation_id)

@@ -130,6 +130,17 @@ async def get_conversation_detail(
     return conv
 
 
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str, authorization: str | None = Header(default=None)
+) -> dict:
+    _require_admin(authorization)
+    ok = await history_store.delete_conversation(conversation_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    return {"ok": True}
+
+
 # ---------- Feedback ----------
 
 @router.get("/feedback/stats")

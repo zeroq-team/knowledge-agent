@@ -17,6 +17,7 @@ from docbot.rag.prompts import ANSWER_SYSTEM_PROMPT
 
 logger = structlog.get_logger(__name__)
 
+_NOTE_MARK = "===NOTE==="
 _RATIONALE_MARK = "===RATIONALE==="
 _PROMPT_MARK = "===PROMPT==="
 _END_MARK = "===END==="
@@ -35,6 +36,10 @@ un cambio quirúrgico, no una reescritura total.
 
 Devuelve EXACTAMENTE este formato, sin texto adicional fuera de los marcadores:
 
+===NOTE===
+(nota de una sola línea estilo "commit", en español, imperativa y concreta, máx. 72 \
+caracteres, que resuma el cambio para el historial de versiones. Ej: "evitar KEDB/triage \
+en preguntas de producto")
 ===RATIONALE===
 (2-5 viñetas breves en español: qué cambiaste y por qué, referido al problema observado)
 ===PROMPT===
@@ -61,16 +66,33 @@ def _format_conversation(conversation: dict) -> str:
     return "\n\n".join(lines)
 
 
-def _parse_output(text: str) -> tuple[str, str]:
-    """Extrae (rationale, prompt) de la salida marcada. Robusto a marcadores faltantes."""
+def _first_line(text: str, limit: int = 100) -> str:
+    """Primera línea no vacía, recortada — fallback para la nota."""
+    for ln in text.splitlines():
+        ln = ln.strip().lstrip("-•* ").strip()
+        if ln:
+            return ln[:limit]
+    return ""
+
+
+def _parse_output(text: str) -> tuple[str, str, str]:
+    """Extrae (note, rationale, prompt) de la salida marcada. Robusto a marcadores faltantes."""
     if _PROMPT_MARK in text:
         head, _, tail = text.partition(_PROMPT_MARK)
-        rationale = head.replace(_RATIONALE_MARK, "").strip()
         prompt = tail.split(_END_MARK)[0].strip()
+        # head = [===NOTE=== nota] [===RATIONALE=== rationale]
+        note = ""
+        rationale = head
+        if _RATIONALE_MARK in head:
+            note_part, _, rationale = head.partition(_RATIONALE_MARK)
+            note = note_part.replace(_NOTE_MARK, "").strip()
+        rationale = rationale.replace(_RATIONALE_MARK, "").replace(_NOTE_MARK, "").strip()
+        if not note:
+            note = _first_line(rationale)
         if prompt:
-            return rationale, prompt
+            return note, rationale, prompt
     # Fallback: sin marcadores usable, tratamos todo como el prompt propuesto.
-    return "", text.replace(_END_MARK, "").strip()
+    return "", "", text.replace(_END_MARK, "").strip()
 
 
 async def suggest_improvement(
@@ -109,7 +131,7 @@ async def suggest_improvement(
         ],
     )
     raw = response.choices[0].message.content or ""
-    rationale, suggested_content = _parse_output(raw)
+    note, rationale, suggested_content = _parse_output(raw)
 
     logger.info(
         "prompt_improvement_suggested",
@@ -117,11 +139,13 @@ async def suggest_improvement(
         based_on_version=based_on_version,
         suggested_len=len(suggested_content),
         has_rationale=bool(rationale),
+        has_note=bool(note),
     )
 
     return {
         "suggested_content": suggested_content,
         "rationale": rationale,
+        "note": note,
         "based_on_version": based_on_version,
         "model": settings.rag_model,
     }
