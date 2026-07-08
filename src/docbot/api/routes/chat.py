@@ -158,6 +158,8 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             agent_version=agent_version,
             conversation_id=conversation_id or None,
             message_id=message_id or None,
+            prompt_key=result.prompt_key,
+            prompt_version=result.prompt_version,
         )
 
     # Respuesta final con citas embebidas en el texto.
@@ -193,6 +195,8 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         agent_version=agent_version,
         conversation_id=conversation_id or None,
         message_id=message_id or None,
+        prompt_key=result.prompt_key,
+        prompt_version=result.prompt_version,
     )
 
 

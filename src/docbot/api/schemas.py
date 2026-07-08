@@ -130,6 +130,8 @@ class ChatResponse(BaseModel):
     agent_version: str | None = None
     conversation_id: str | None = None
     message_id: str | None = None
+    prompt_key: str | None = None
+    prompt_version: int | None = None
 
 
 # ---------- /feedback ----------
