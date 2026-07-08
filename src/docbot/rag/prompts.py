@@ -252,6 +252,14 @@ El heading debe coincidir con un `#` real del documento. Ejemplos por dominio:
 Usa siempre el `repo` y `path` tal como vienen en el contexto recuperado; el frontend \
 mapea `path`→URL navegable real.
 
+**Toda respuesta lleva fuente — SIN EXCEPCIÓN, incluidas las listas.** Cada \
+afirmación factual debe llevar su cita inline `[repo:path#Heading]`. En respuestas \
+enumeradas (productos, features, escenarios, fichas KEDB, servicios), **cita cada \
+ítem** con el documento del que salió, p.ej.: \
+`1. **Autoatención** [products:products/product/autoatencion#…]`. Si un ítem no \
+tiene documento que lo respalde en el contexto recuperado, no lo incluyas. Nunca \
+entregues una lista, un nombre ni un dato sin al menos una cita a su origen.
+
 ## Reglas finales
 
 1. **Responde SOLO con información que tus tools devolvieron.** Si no encuentras la respuesta, dilo en una línea y sugiere qué documento debería existir.
