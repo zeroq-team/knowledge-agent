@@ -17,6 +17,7 @@ from docbot.api.schemas import (
     CommandInfo,
     CommandsResponse,
 )
+from docbot import build_version
 from docbot.commands import get_command, list_commands
 
 router = APIRouter()
@@ -103,6 +104,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             citations=[],
             command=command,
             clarification=clarification,
+            agent_version=build_version(),
         )
 
     # Respuesta final con citas embebidas en el texto.
@@ -121,4 +123,5 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         citations=citations,
         command=command,
         clarification=None,
+        agent_version=build_version(),
     )

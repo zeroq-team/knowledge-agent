@@ -126,6 +126,7 @@ class ChatResponse(BaseModel):
     citations: list[CitationItem] = []
     command: str | None = None
     clarification: ClarificationPayload | None = None
+    agent_version: str | None = None
 
 
 # ---------- /commands ----------
