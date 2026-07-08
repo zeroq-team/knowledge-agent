@@ -9,6 +9,7 @@ import asyncpg
 import structlog
 from langchain_core.tools import tool
 
+from docbot.agent.scope import TECHNICAL_DOMAINS, allowed_domains_var
 from docbot.config import Settings
 from docbot.embeddings import embed_text
 from docbot.search.graph import impact_analysis
@@ -77,9 +78,13 @@ async def knowledge_search(
     pool, settings = _require_deps()
     query_embedding = await embed_text(query, settings)
 
+    # Scoping por rol: filtra el retrieval a los dominios permitidos del usuario
+    # (inyectados por request desde el header X-ZeroQ-Scopes). None = sin restricción.
+    domains = allowed_domains_var.get()
+
     async with pool.acquire() as conn:
         results = await hybrid_search(
-            conn, query_embedding, top_k=min(top_k, 20), doc_type=doc_type,
+            conn, query_embedding, top_k=min(top_k, 20), doc_type=doc_type, domains=domains,
         )
 
     if not results:
@@ -124,6 +129,15 @@ async def analyze_impact(
 
     Retorna el grafo de dependencias con nodos y relaciones.
     """
+    # El análisis de impacto es información técnica/arquitectura. Si el usuario
+    # no tiene un dominio técnico/operaciones habilitado, no lo exponemos.
+    domains = allowed_domains_var.get()
+    if domains is not None and not (set(domains) & TECHNICAL_DOMAINS):
+        return (
+            "Esa información (análisis de impacto / arquitectura técnica) no está disponible "
+            "para tu perfil. Contactá a un administrador si la necesitás."
+        )
+
     pool, _ = _require_deps()
 
     async with pool.acquire() as conn:

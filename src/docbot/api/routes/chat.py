@@ -7,7 +7,10 @@ import time
 import unicodedata
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+
+from docbot.agent.scope import allowed_domains_var, build_scope_directive, parse_scopes
+from docbot.config import get_settings
 
 from docbot.api.schemas import (
     ChatRequest,
@@ -94,6 +97,12 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
     """
     from docbot.agent.graph import AgentClarification, invoke_agent
 
+    # Auth proxy→agente: si hay proxy_token configurado, exigirlo (evita que una
+    # llamada directa pública saltee el scoping por rol).
+    settings = get_settings()
+    if settings.proxy_token and request.headers.get("X-ZeroQ-Proxy-Token") != settings.proxy_token:
+        raise HTTPException(status_code=401, detail="Proxy token requerido/ inválido")
+
     command = None
     command_prompt = None
 
@@ -103,10 +112,20 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
     # Identidad del usuario interno, inyectada por el proxy de knowledge-web.
     user_email = request.headers.get("X-ZeroQ-User") or None
 
+    # Scoping por rol: dominios permitidos (CSV) resueltos server-side por el proxy.
+    scopes = parse_scopes(request.headers.get("X-ZeroQ-Scopes"))
+    scope_directive = build_scope_directive(scopes)
+
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
     t0 = time.time()
-    result = await invoke_agent(messages, command_prompt=command_prompt)
+    token = allowed_domains_var.set(scopes)
+    try:
+        result = await invoke_agent(
+            messages, command_prompt=command_prompt, scope_directive=scope_directive
+        )
+    finally:
+        allowed_domains_var.reset(token)
     latency_ms = int((time.time() - t0) * 1000)
 
     agent_version = build_version()

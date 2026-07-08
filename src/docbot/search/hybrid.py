@@ -22,6 +22,7 @@ class SearchResult:
     score: float
     snippet: str
     doc_type: str | None = None
+    domain: str | None = None
 
 
 async def hybrid_search(
@@ -33,6 +34,7 @@ async def hybrid_search(
     repo: str | None = None,
     doc_type: str | None = None,
     path_prefix: str | None = None,
+    domains: list[str] | None = None,
 ) -> list[SearchResult]:
     """Ejecuta búsqueda vectorial con filtros opcionales de metadata.
 
@@ -54,13 +56,15 @@ async def hybrid_search(
             c.heading,
             1 - (c.embedding <=> $1) AS score,
             c.content    AS snippet,
-            d.doc_type
+            d.doc_type,
+            d.domain
         FROM doc_chunks c
         JOIN docs d ON c.doc_id = d.id
         WHERE ($2::text IS NULL OR d.source = $2)
           AND ($3::text IS NULL OR d.repo = $3)
           AND ($4::text IS NULL OR d.doc_type = $4)
           AND ($5::text IS NULL OR d.path LIKE $5 || '%')
+          AND ($7::text[] IS NULL OR d.domain = ANY($7))
         ORDER BY c.embedding <=> $1
         LIMIT $6
     """
@@ -73,6 +77,7 @@ async def hybrid_search(
         doc_type,
         path_prefix,
         top_k,
+        domains,
     )
 
     results = [
@@ -85,6 +90,7 @@ async def hybrid_search(
             score=float(row["score"]),
             snippet=row["snippet"],
             doc_type=row["doc_type"],
+            domain=row["domain"],
         )
         for row in rows
     ]

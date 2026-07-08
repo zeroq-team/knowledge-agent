@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Si se define, se exige Authorization: Bearer <admin_token> en esas rutas.
     admin_token: str | None = None
 
+    # --- Auth proxy→agente para /chat (scoping por rol) ---
+    # Secreto compartido con knowledge-web. Si se define, /chat exige el header
+    # X-ZeroQ-Proxy-Token; sin él responde 401 (evita bypass del scoping por rol
+    # llamando al agente directo). Los dominios permitidos llegan en X-ZeroQ-Scopes.
+    proxy_token: str | None = None
+
     # --- CORS ---
     cors_origins: str = "*"
 

@@ -43,6 +43,30 @@ logger = structlog.get_logger(__name__)
 KNOWLEDGE_WEB_SOURCE = "knowledge-web"
 
 
+def derive_domain(repo: str, path: str) -> str:
+    """Dominio de conocimiento (para scoping por rol) según repo + carpeta.
+
+    Debe coincidir con el vocabulario de dominios del proxy de knowledge-web:
+    product | operations | technical | security | general.
+    """
+    if repo == "products":
+        return "product"
+    if repo in ("playbook", "autoservicio"):
+        return "operations"
+    # Vault (repo == "knowledge"): por carpeta raíz del path.
+    # El path viene en minúsculas (ej: "01-architecture/services/..."), comparar así.
+    p = (path or "").lower()
+    if p.startswith("02-product"):
+        return "product"
+    if p.startswith("04-operations"):
+        return "operations"
+    if p.startswith("01-architecture") or p.startswith("08-engineering"):
+        return "technical"
+    if p.startswith("03-security"):
+        return "security"
+    return "general"
+
+
 async def _fetch_export(url: str, token: str | None, *, timeout: float = 60.0) -> list[dict]:
     """Hace el fetch al endpoint de export y devuelve la lista de documentos."""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -134,6 +158,14 @@ async def sync_knowledge_web(
         async with pool.acquire() as conn:
             doc_id, changed = await _upsert_doc(
                 conn, KNOWLEDGE_WEB_SOURCE, repo, parsed
+            )
+
+            # Dominio para el scoping por rol. Se setea SIEMPRE (aun si el doc no
+            # cambió) para poblar la columna en el primer reindex tras la migración.
+            await conn.execute(
+                "UPDATE docs SET domain = $1 WHERE id = $2::uuid",
+                derive_domain(repo, parsed.path),
+                doc_id,
             )
 
             if not changed:

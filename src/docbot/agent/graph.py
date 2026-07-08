@@ -98,11 +98,13 @@ def _build_lc_messages(
     messages: list[dict[str, str]],
     system_prompt: str | None,
     command_prompt: str | None,
+    scope_directive: str | None = None,
 ) -> list[BaseMessage]:
     """Construye la lista de mensajes para LangGraph desde el historial JSON.
 
     El `system_prompt` (prompt maestro activo del store) va primero; el
-    `command_prompt` (ej: /user-story) se suma como directiva adicional.
+    `command_prompt` (ej: /user-story) y el `scope_directive` (alcance por rol)
+    se suman como directivas adicionales.
     """
     lc_messages: list[BaseMessage] = []
 
@@ -111,6 +113,9 @@ def _build_lc_messages(
 
     if command_prompt:
         lc_messages.append(SystemMessage(content=command_prompt))
+
+    if scope_directive:
+        lc_messages.append(SystemMessage(content=scope_directive))
 
     for msg in messages:
         if msg["role"] == "user":
@@ -133,6 +138,7 @@ async def invoke_agent(
     messages: list[dict[str, str]],
     *,
     command_prompt: str | None = None,
+    scope_directive: str | None = None,
 ) -> AgentResult:
     """Ejecuta el agente y retorna AgentAnswer o AgentClarification.
 
@@ -152,7 +158,7 @@ async def invoke_agent(
     """
     agent = get_agent()
     system_prompt, prompt_version = await _resolve_system_prompt()
-    lc_messages = _build_lc_messages(messages, system_prompt, command_prompt)
+    lc_messages = _build_lc_messages(messages, system_prompt, command_prompt, scope_directive)
 
     tool_calls_info: list[dict] = []
     all_messages: list[BaseMessage] = list(lc_messages)
