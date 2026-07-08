@@ -12,6 +12,12 @@ from docbot.models import ParsedDoc
 
 logger = structlog.get_logger(__name__)
 
+# Tipos de documento que el export de knowledge-web declara EXPLÍCITAMENTE
+# (además de los tipos clásicos del vault). No se re-infieren.
+KNOWLEDGE_WEB_DOC_TYPES = frozenset(
+    {"product", "subproduct", "feature", "scenario", "kedb", "triage"}
+)
+
 
 def _content_hash(raw: str) -> str:
     """SHA-256 del contenido completo del archivo."""
@@ -45,6 +51,13 @@ def _infer_doc_type(fm: dict, rel_path: str) -> str:
         ("/features/", "feature"),
         ("/templates/", "template"),
         ("/data-flow/", "data_flow"),
+        # Dominios de knowledge-web (fallback; normalmente vienen con doc_type explícito).
+        ("products/subproduct", "subproduct"),
+        ("products/product", "product"),
+        ("products/feature", "feature"),
+        ("playbook/", "scenario"),
+        ("autoservicio/kedb", "kedb"),
+        ("autoservicio/triage", "triage"),
     ]
     for needle, dtype in rules:
         if needle in lower:
@@ -141,4 +154,48 @@ def parse_file(file_path: pathlib.Path, rel_path: str) -> ParsedDoc:
         frontmatter=fm,
         body=body,
         content_hash=_content_hash(raw),
+    )
+
+
+def parse_export_doc(doc: dict) -> ParsedDoc:
+    """Convierte un ``ExportDoc`` del endpoint de knowledge-web en un ``ParsedDoc``.
+
+    A diferencia de :func:`parse_file`:
+
+    - El ``doc_type`` viene EXPLÍCITO en el payload y **no** se re-infiere
+      (solo se cae a ``_infer_doc_type`` si el export no lo trae).
+    - El ``content_hash`` lo provee el export (sha256 del ``body``); se usa tal
+      cual para la incrementalidad. Si faltara, se recomputa localmente.
+    - El destino navegable real (``url``) se guarda dentro del ``frontmatter``
+      JSONB (la tabla ``docs`` no tiene columna dedicada), quedando disponible
+      en la metadata del doc.
+
+    Campos esperados en ``doc``: ``path``, ``title``, ``doc_type``,
+    ``frontmatter``, ``body``, ``content_hash``, ``url``.
+    """
+    path = str(doc.get("path") or "").strip()
+    if not path:
+        raise ValueError("ExportDoc sin 'path'")
+
+    body = doc.get("body") or ""
+    fm: dict = dict(doc.get("frontmatter") or {})
+
+    url = doc.get("url")
+    if url and "url" not in fm:
+        fm["url"] = url
+
+    explicit_type = (doc.get("doc_type") or "").strip().lower()
+    doc_type = explicit_type or _infer_doc_type(fm, path)
+
+    title = (doc.get("title") or "").strip() or _infer_title(fm, path, body)
+
+    content_hash = (doc.get("content_hash") or "").strip() or _content_hash(body)
+
+    return ParsedDoc(
+        path=path,
+        title=title,
+        doc_type=doc_type,
+        frontmatter=fm,
+        body=body,
+        content_hash=content_hash,
     )

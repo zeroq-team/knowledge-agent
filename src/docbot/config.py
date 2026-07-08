@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     rag_max_context_chunks: int = 8
     rag_temperature: float = 0.1
 
+    # --- Ingesta unificada desde knowledge-web (export HTTP) ---
+    kb_export_url: str | None = None
+    kb_export_token: str | None = None
+
+    # --- Auth opcional para POST /sync (si se define, se exige Bearer) ---
+    sync_token: str | None = None
+
     # --- CORS ---
     cors_origins: str = "*"
 

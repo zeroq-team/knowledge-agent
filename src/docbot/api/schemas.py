@@ -67,8 +67,10 @@ class AnswerResponse(BaseModel):
 # ---------- /sync ----------
 
 class SyncRequest(BaseModel):
+    # "obsidian"/"gitlab" -> clona repo git (requiere repo_url).
+    # "knowledge-web"     -> consume el export HTTP unificado (repo_url no aplica).
     source: str = "obsidian"
-    repo_url: str
+    repo_url: str | None = None
     branch: str = "main"
     repo_name: str | None = None
 
