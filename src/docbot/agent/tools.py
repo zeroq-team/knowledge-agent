@@ -38,28 +38,36 @@ async def knowledge_search(
     query: Annotated[str, "Pregunta o términos de búsqueda en lenguaje natural"],
     doc_type: Annotated[
         str | None,
-        "Filtra por el campo 'type' del frontmatter. Valores válidos: "
-        "service, feature, infra, integration, policy, procedure, rfp, "
-        "module, agent, skill, runbook. None = todos los tipos.",
+        "Filtra por tipo de documento. Vault: service, infra, integration, "
+        "policy, procedure, rfp, module, agent, skill, runbook, reference, "
+        "frontend. Catálogo de productos (Supabase, panel /products): "
+        "product, subproduct, feature. Playbook oncall (panel /playbook): "
+        "scenario. Autoservicio / triage de tótems (panel /autoservicio): "
+        "kedb, triage. None = todos los tipos.",
     ] = None,
     top_k: Annotated[int, "Cantidad de resultados a retornar (1-20)"] = 6,
 ) -> str:
     """Busca en la base de conocimiento de ZeroQ usando búsqueda semántica híbrida.
 
     Es la tool principal para cualquier pregunta cuya respuesta esté documentada.
-    Cubre los 8 dominios del vault: arquitectura, producto, seguridad, operaciones,
-    clientes, RFPs, governance y engineering.
+    Cubre el vault (arquitectura, seguridad, operaciones, clientes, RFPs,
+    governance, engineering) Y los 3 paneles de la app: el catálogo de productos,
+    el Master Playbook oncall y la Consola de Autoservicio/triage.
 
-    Ejemplos de uso por dominio:
+    IMPORTANTE — para preguntas sobre los paneles, filtrá por su doc_type propio
+    (NO uses "module": ese es un doc de arquitectura del vault, no el catálogo):
+    - Catálogo de productos (features, subproductos): query="features de Autoatención", doc_type="feature" (o "product" / "subproduct")
+    - Playbook oncall (escenarios de incidente): query="datos desactualizados por RabbitMQ", doc_type="scenario"
+    - Autoservicio / triage de tótems (fichas KEDB): query="falla de huella en tótem", doc_type="kedb"
+
+    Ejemplos del vault:
     - Arquitectura: query="endpoints de turn-o-matic", doc_type="service"
     - Infraestructura: query="cómo está configurado Redis", doc_type="infra"
     - Operaciones: query="qué hago si webapi devuelve 502", doc_type="runbook"
     - RFPs: query="cifrado en tránsito y en reposo", doc_type="rfp"
     - Seguridad: query="política de acceso a Cartelería", doc_type="policy"
-    - Producto: query="qué es Cartelería Digital", doc_type="module"
+    - Doc de arquitectura de un módulo/plataforma: query="qué es Cartelería Digital", doc_type="module"
     - Cliente: query="instancia de Banco Pichincha", doc_type=None (sin filtro)
-    - Governance: query="cómo nombrar un nuevo servicio", doc_type="policy"
-    - Skills (capacidades AI): query="skill de resiliencia code review", doc_type="skill"
     - Agentes AI: query="cómo está armado el Docbot", doc_type="agent"
 
     Retorna los fragmentos más relevantes con su ubicación exacta para citar.
