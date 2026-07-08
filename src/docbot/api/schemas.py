@@ -95,6 +95,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     command: str | None = None
+    conversation_id: str | None = None
 
 
 class ClarificationOption(BaseModel):
@@ -127,6 +128,31 @@ class ChatResponse(BaseModel):
     command: str | None = None
     clarification: ClarificationPayload | None = None
     agent_version: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+
+
+# ---------- /feedback ----------
+
+class FeedbackRequest(BaseModel):
+    message_id: str
+    rating: int = Field(description="1 = 👍, -1 = 👎")
+    comment: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    ok: bool
+
+
+# ---------- /admin/prompts ----------
+
+class PromptVersionCreate(BaseModel):
+    content: str = Field(min_length=1)
+    note: str | None = None
+
+
+class PromptActivate(BaseModel):
+    version: int
 
 
 # ---------- /commands ----------

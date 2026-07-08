@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
         app.state.pool = pool
         app.state.settings = settings
 
+        from docbot.prompts.store import seed_defaults
+
+        await seed_defaults()
+        logger.info("prompts_seeded")
+
         from docbot.agent.graph import build_agent
 
         build_agent(settings, pool)
@@ -84,6 +89,7 @@ def create_app() -> FastAPI:
         return response
 
     # --- Routers ---
+    from docbot.api.routes.admin import router as admin_router
     from docbot.api.routes.answer import router as answer_router
     from docbot.api.routes.chat import router as chat_router
     from docbot.api.routes.health import router as health_router
@@ -95,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(answer_router, tags=["rag"])
     app.include_router(chat_router, tags=["chat"])
     app.include_router(sync_router, tags=["indexer"])
+    app.include_router(admin_router, tags=["admin"])
 
     @app.get("/", include_in_schema=False)
     async def root():

@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from docbot.config import Settings
 from docbot.embeddings import embed_text
+from docbot.prompts import store as prompt_store
 from docbot.rag.prompts import ANSWER_SYSTEM_PROMPT, ANSWER_USER_TEMPLATE
 from docbot.search.hybrid import SearchResult, hybrid_search
 
@@ -110,12 +111,18 @@ async def generate_answer(
         question=question,
     )
 
+    # Prompt maestro activo (editable en caliente); fallback a la constante.
+    try:
+        system_prompt = await prompt_store.get_active("answer_system") or ANSWER_SYSTEM_PROMPT
+    except Exception:  # noqa: BLE001
+        system_prompt = ANSWER_SYSTEM_PROMPT
+
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model=settings.rag_model,
         temperature=settings.rag_temperature,
         messages=[
-            {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
     )

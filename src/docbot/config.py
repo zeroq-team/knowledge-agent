@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # --- Auth opcional para POST /sync (si se define, se exige Bearer) ---
     sync_token: str | None = None
 
+    # --- Auth para rutas /admin/* (prompts, conversaciones, feedback stats) ---
+    # Si se define, se exige Authorization: Bearer <admin_token> en esas rutas.
+    admin_token: str | None = None
+
     # --- CORS ---
     cors_origins: str = "*"
 

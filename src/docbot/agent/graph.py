@@ -6,19 +6,31 @@ from dataclasses import dataclass, field
 from typing import Union
 
 import asyncpg
+import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
+logger = structlog.get_logger(__name__)
+
 from docbot.agent.tools import ALL_TOOLS, configure_tools
 from docbot.config import Settings
+from docbot.prompts import store as prompt_store
 from docbot.rag.prompts import ANSWER_SYSTEM_PROMPT
+
+# Key del prompt maestro del agente en el store versionado.
+ANSWER_PROMPT_KEY = "answer_system"
 
 _compiled_graph = None
 
 
 def build_agent(settings: Settings, pool: asyncpg.Pool):
-    """Construye y cachea el grafo del agente con tools."""
+    """Construye y cachea el grafo del agente con tools.
+
+    El system prompt NO se hornea aquí: se lee del store versionado por request
+    (ver `invoke_agent`), de modo que editarlo desde el panel admin surte efecto
+    en caliente sin reconstruir el grafo ni reiniciar el proceso.
+    """
     global _compiled_graph
 
     configure_tools(pool, settings)
@@ -32,10 +44,20 @@ def build_agent(settings: Settings, pool: asyncpg.Pool):
     _compiled_graph = create_react_agent(
         model=llm,
         tools=ALL_TOOLS,
-        prompt=ANSWER_SYSTEM_PROMPT,
     )
 
     return _compiled_graph
+
+
+async def _resolve_system_prompt() -> tuple[str, int | None]:
+    """Devuelve (contenido, versión) del system prompt activo, con fallback a la constante."""
+    try:
+        result = await prompt_store.get_active_with_version(ANSWER_PROMPT_KEY)
+        if result is not None:
+            return result
+    except Exception:  # noqa: BLE001 — degradar a la constante ante cualquier fallo del store
+        logger.warning("prompt_store_unavailable_fallback_constant")
+    return ANSWER_SYSTEM_PROMPT, None
 
 
 def get_agent():
@@ -55,6 +77,8 @@ class AgentClarification:
     options: list[str] | None = None
     reason: str | None = None
     tool_calls: list[dict] = field(default_factory=list)
+    prompt_key: str | None = None
+    prompt_version: int | None = None
 
 
 @dataclass
@@ -63,6 +87,8 @@ class AgentAnswer:
 
     reply: str
     tool_calls: list[dict] = field(default_factory=list)
+    prompt_key: str | None = None
+    prompt_version: int | None = None
 
 
 AgentResult = Union[AgentAnswer, AgentClarification]
@@ -70,10 +96,18 @@ AgentResult = Union[AgentAnswer, AgentClarification]
 
 def _build_lc_messages(
     messages: list[dict[str, str]],
+    system_prompt: str | None,
     command_prompt: str | None,
 ) -> list[BaseMessage]:
-    """Construye la lista de mensajes para LangGraph desde el historial JSON."""
+    """Construye la lista de mensajes para LangGraph desde el historial JSON.
+
+    El `system_prompt` (prompt maestro activo del store) va primero; el
+    `command_prompt` (ej: /user-story) se suma como directiva adicional.
+    """
     lc_messages: list[BaseMessage] = []
+
+    if system_prompt:
+        lc_messages.append(SystemMessage(content=system_prompt))
 
     if command_prompt:
         lc_messages.append(SystemMessage(content=command_prompt))
@@ -117,7 +151,8 @@ async def invoke_agent(
         AgentAnswer o AgentClarification.
     """
     agent = get_agent()
-    lc_messages = _build_lc_messages(messages, command_prompt)
+    system_prompt, prompt_version = await _resolve_system_prompt()
+    lc_messages = _build_lc_messages(messages, system_prompt, command_prompt)
 
     tool_calls_info: list[dict] = []
     all_messages: list[BaseMessage] = list(lc_messages)
@@ -144,6 +179,8 @@ async def invoke_agent(
                             options=args.get("options"),
                             reason=args.get("reason"),
                             tool_calls=tool_calls_info,
+                            prompt_key=ANSWER_PROMPT_KEY,
+                            prompt_version=prompt_version,
                         )
 
             elif node == "tools":
@@ -160,4 +197,9 @@ async def invoke_agent(
                         )
 
     reply = _extract_final_reply(all_messages)
-    return AgentAnswer(reply=reply, tool_calls=tool_calls_info)
+    return AgentAnswer(
+        reply=reply,
+        tool_calls=tool_calls_info,
+        prompt_key=ANSWER_PROMPT_KEY,
+        prompt_version=prompt_version,
+    )
