@@ -155,6 +155,11 @@ class PromptActivate(BaseModel):
     version: int
 
 
+class PromptSuggestRequest(BaseModel):
+    conversation_id: str | None = None
+    instruction: str | None = None
+
+
 # ---------- /commands ----------
 
 class CommandInfo(BaseModel):

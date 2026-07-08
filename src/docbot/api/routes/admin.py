@@ -9,9 +9,10 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from docbot.api.schemas import PromptActivate, PromptVersionCreate
+from docbot.api.schemas import PromptActivate, PromptSuggestRequest, PromptVersionCreate
 from docbot.config import get_settings
 from docbot.history import store as history_store
+from docbot.prompts import improve as prompt_improve
 from docbot.prompts import store as prompt_store
 
 router = APIRouter(prefix="/admin")
@@ -75,6 +76,29 @@ async def activate_prompt_version(
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"key": key, "version": body.version, "active": True}
+
+
+@router.post("/prompts/{key}/suggest")
+async def suggest_prompt_improvement(
+    key: str, body: PromptSuggestRequest, authorization: str | None = Header(default=None)
+) -> dict:
+    """Propone una reescritura del prompt a partir de una conversación deficiente."""
+    _require_admin(authorization)
+
+    conversation: dict = {"messages": []}
+    if body.conversation_id:
+        conv = await history_store.get_conversation(body.conversation_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        conversation = conv
+
+    try:
+        return await prompt_improve.suggest_improvement(
+            key, conversation, body.instruction, get_settings()
+        )
+    except Exception as e:  # noqa: BLE001 — errores del LLM → 502 con detalle
+        logger.exception("suggest_failed", key=key)
+        raise HTTPException(status_code=502, detail=f"No se pudo generar la propuesta: {e}") from e
 
 
 # ---------- Conversaciones ----------
