@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # reasoning_effort al modelo y NO se manda temperature (los razonadores de
     # OpenAI la rechazan). Vacío ("") = modo clásico con temperature.
     rag_reasoning_effort: str = "medium"
+    # Modelo barato/rápido para traducir el resumen de razonamiento on-demand.
+    translate_model: str = "gpt-4o-mini"
 
     # --- Ingesta unificada desde knowledge-web (export HTTP) ---
     kb_export_url: str | None = None

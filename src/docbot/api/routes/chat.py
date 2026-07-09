@@ -22,6 +22,8 @@ from docbot.api.schemas import (
     CommandsResponse,
     FeedbackRequest,
     FeedbackResponse,
+    TranslateRequest,
+    TranslateResponse,
 )
 from docbot import build_version
 from docbot.commands import get_command, list_commands
@@ -223,6 +225,44 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         model=model,
         reasoning=result.reasoning,
     )
+
+
+@router.post("/translate", response_model=TranslateResponse)
+async def translate(body: TranslateRequest, request: Request) -> TranslateResponse:
+    """Traduce texto (on-demand) con un modelo barato. Se usa para el resumen de
+    razonamiento, que OpenAI solo devuelve en inglés. Gateado por proxy_token."""
+    settings = get_settings()
+    if settings.proxy_token and request.headers.get("X-ZeroQ-Proxy-Token") != settings.proxy_token:
+        raise HTTPException(status_code=401, detail="Proxy token requerido/ inválido")
+
+    text = (body.text or "").strip()
+    if not text:
+        return TranslateResponse(translated="")
+
+    lang = "español" if body.target == "es" else body.target
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.translate_model,
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Traducís texto técnico al {lang}. Devolvé SOLO la traducción, "
+                        "natural y fiel, sin comentarios ni comillas. Conservá el formato "
+                        "(saltos de línea, **negritas**, viñetas)."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+        )
+        return TranslateResponse(translated=resp.choices[0].message.content or text)
+    except Exception as err:  # noqa: BLE001 — fallback al original ante cualquier fallo
+        logger.warning("translate_failed", error=str(err))
+        return TranslateResponse(translated=text)
 
 
 @router.post("/feedback", response_model=FeedbackResponse)

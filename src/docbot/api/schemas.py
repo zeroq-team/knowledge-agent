@@ -136,6 +136,17 @@ class ChatResponse(BaseModel):
     reasoning: str | None = None
 
 
+# ---------- /translate ----------
+
+class TranslateRequest(BaseModel):
+    text: str
+    target: str = "es"
+
+
+class TranslateResponse(BaseModel):
+    translated: str
+
+
 # ---------- /feedback ----------
 
 class FeedbackRequest(BaseModel):
