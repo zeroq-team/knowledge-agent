@@ -39,6 +39,7 @@ async def record_exchange(
     agent_version: str | None,
     command: str | None,
     latency_ms: int | None,
+    model: str | None = None,
 ) -> tuple[str, str]:
     """Registra el último turno (user + assistant). Devuelve (conversation_id, assistant_message_id).
 
@@ -91,9 +92,9 @@ async def record_exchange(
                     """
                     INSERT INTO chat_messages (
                         conversation_id, role, content, citations, tools_used,
-                        prompt_key, prompt_version, agent_version, command, latency_ms
+                        prompt_key, prompt_version, agent_version, command, latency_ms, model
                     )
-                    VALUES ($1, 'assistant', $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9)
+                    VALUES ($1, 'assistant', $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10)
                     RETURNING id
                     """,
                     cid,
@@ -105,6 +106,7 @@ async def record_exchange(
                     agent_version,
                     command,
                     latency_ms,
+                    model,
                 )
         return cid, str(message_id)
     except Exception:  # noqa: BLE001 — la telemetría nunca debe tumbar el chat
@@ -217,7 +219,7 @@ async def get_conversation(conversation_id: str) -> dict | None:
         """
         SELECT
             m.id, m.role, m.content, m.citations, m.tools_used, m.prompt_key,
-            m.prompt_version, m.agent_version, m.command, m.latency_ms, m.created_at,
+            m.prompt_version, m.agent_version, m.command, m.latency_ms, m.model, m.created_at,
             f.rating AS feedback_rating, f.comment AS feedback_comment
         FROM chat_messages m
         LEFT JOIN message_feedback f ON f.message_id = m.id

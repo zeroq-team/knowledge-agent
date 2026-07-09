@@ -129,6 +129,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
     latency_ms = int((time.time() - t0) * 1000)
 
     agent_version = build_version()
+    model = settings.rag_model
     user_content = _last_user_content(messages)
 
     # El agente decidió pedir clarificación al usuario antes de buscar.
@@ -166,6 +167,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             agent_version=agent_version,
             command=command,
             latency_ms=latency_ms,
+            model=model,
         )
 
         return ChatResponse(
@@ -179,6 +181,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             message_id=message_id or None,
             prompt_key=result.prompt_key,
             prompt_version=result.prompt_version,
+            model=model,
         )
 
     # Respuesta final con citas embebidas en el texto.
@@ -203,6 +206,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         agent_version=agent_version,
         command=command,
         latency_ms=latency_ms,
+        model=model,
     )
 
     return ChatResponse(
@@ -216,6 +220,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         message_id=message_id or None,
         prompt_key=result.prompt_key,
         prompt_version=result.prompt_version,
+        model=model,
     )
 
 

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     rag_model: str = "gpt-5.2"
     rag_max_context_chunks: int = 8
     rag_temperature: float = 0.1
+    # Modo razonador: si tiene valor ("low"|"medium"|"high"), se envía
+    # reasoning_effort al modelo y NO se manda temperature (los razonadores de
+    # OpenAI la rechazan). Vacío ("") = modo clásico con temperature.
+    rag_reasoning_effort: str = "medium"
 
     # --- Ingesta unificada desde knowledge-web (export HTTP) ---
     kb_export_url: str | None = None
@@ -53,6 +57,19 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     model_config = {"env_prefix": "DOCBOT_", "env_file": ".env"}
+
+    def sampling_kwargs(self, default_temperature: float | None = None) -> dict:
+        """Params de sampling según el modo del modelo.
+
+        Razonador (rag_reasoning_effort no vacío): {"reasoning_effort": ...}, sin
+        temperature. Clásico: {"temperature": ...}. Sirve igual para el SDK de
+        OpenAI (chat.completions.create) y para langchain ChatOpenAI, que aceptan
+        ambos kwargs con el mismo nombre.
+        """
+        if self.rag_reasoning_effort:
+            return {"reasoning_effort": self.rag_reasoning_effort}
+        t = self.rag_temperature if default_temperature is None else default_temperature
+        return {"temperature": t}
 
 
 def get_settings() -> Settings:

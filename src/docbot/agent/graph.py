@@ -37,8 +37,8 @@ def build_agent(settings: Settings, pool: asyncpg.Pool):
 
     llm = ChatOpenAI(
         model=settings.rag_model,
-        temperature=settings.rag_temperature,
         api_key=settings.openai_api_key,
+        **settings.sampling_kwargs(),
     )
 
     _compiled_graph = create_react_agent(

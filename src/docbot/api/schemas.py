@@ -132,6 +132,7 @@ class ChatResponse(BaseModel):
     message_id: str | None = None
     prompt_key: str | None = None
     prompt_version: int | None = None
+    model: str | None = None
 
 
 # ---------- /feedback ----------

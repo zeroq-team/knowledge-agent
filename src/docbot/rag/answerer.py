@@ -120,11 +120,11 @@ async def generate_answer(
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model=settings.rag_model,
-        temperature=settings.rag_temperature,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
+        **settings.sampling_kwargs(),
     )
 
     answer_text = response.choices[0].message.content or ""

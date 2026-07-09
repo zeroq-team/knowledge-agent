@@ -124,11 +124,11 @@ async def suggest_improvement(
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     response = await client.chat.completions.create(
         model=settings.rag_model,
-        temperature=0.2,
         messages=[
             {"role": "system", "content": _META_SYSTEM},
             {"role": "user", "content": user_message},
         ],
+        **settings.sampling_kwargs(default_temperature=0.2),
     )
     raw = response.choices[0].message.content or ""
     note, rationale, suggested_content = _parse_output(raw)
