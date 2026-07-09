@@ -58,6 +58,20 @@ class Settings(BaseSettings):
 
     model_config = {"env_prefix": "DOCBOT_", "env_file": ".env"}
 
+    def chat_llm_kwargs(self) -> dict:
+        """Kwargs para el ChatOpenAI del agente de /chat.
+
+        En modo razonador usa la Responses API con `reasoning.summary` para poder
+        exponer el resumen del razonamiento (que chat.completions no devuelve).
+        En modo clásico, temperature normal.
+        """
+        if self.rag_reasoning_effort:
+            return {
+                "use_responses_api": True,
+                "reasoning": {"effort": self.rag_reasoning_effort, "summary": "detailed"},
+            }
+        return {"temperature": self.rag_temperature}
+
     def sampling_kwargs(self, default_temperature: float | None = None) -> dict:
         """Params de sampling según el modo del modelo.
 

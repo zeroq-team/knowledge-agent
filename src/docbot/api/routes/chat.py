@@ -221,6 +221,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         prompt_key=result.prompt_key,
         prompt_version=result.prompt_version,
         model=model,
+        reasoning=result.reasoning,
     )
 
 

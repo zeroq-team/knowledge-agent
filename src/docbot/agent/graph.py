@@ -38,7 +38,7 @@ def build_agent(settings: Settings, pool: asyncpg.Pool):
     llm = ChatOpenAI(
         model=settings.rag_model,
         api_key=settings.openai_api_key,
-        **settings.sampling_kwargs(),
+        **settings.chat_llm_kwargs(),
     )
 
     _compiled_graph = create_react_agent(
@@ -89,6 +89,7 @@ class AgentAnswer:
     tool_calls: list[dict] = field(default_factory=list)
     prompt_key: str | None = None
     prompt_version: int | None = None
+    reasoning: str | None = None
 
 
 AgentResult = Union[AgentAnswer, AgentClarification]
@@ -126,11 +127,42 @@ def _build_lc_messages(
     return lc_messages
 
 
+def _content_text(content) -> str:
+    """Texto plano de un content de AIMessage (str o lista de bloques de la Responses API)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return str(content)
+
+
+def _content_reasoning(content) -> str:
+    """Resumen de razonamiento embebido en el content (bloques con `summary`).
+
+    La Responses API devuelve el thinking como bloques `{summary: [{text, type:
+    'summary_text'}]}`. Solo aparece en modo razonador con reasoning.summary.
+    """
+    parts: list[str] = []
+    if isinstance(content, list):
+        for b in content:
+            if isinstance(b, dict) and b.get("summary"):
+                for s in b["summary"]:
+                    if isinstance(s, dict) and s.get("text"):
+                        parts.append(s["text"])
+    return "\n\n".join(parts)
+
+
 def _extract_final_reply(messages: list[BaseMessage]) -> str:
-    """Devuelve el contenido del último AIMessage con texto."""
+    """Devuelve el contenido textual del último AIMessage con texto."""
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
-            return msg.content if isinstance(msg.content, str) else str(msg.content)
+            text = _content_text(msg.content)
+            if text.strip():
+                return text
     return ""
 
 
@@ -161,6 +193,7 @@ async def invoke_agent(
     lc_messages = _build_lc_messages(messages, system_prompt, command_prompt, scope_directive)
 
     tool_calls_info: list[dict] = []
+    reasoning_parts: list[str] = []
     all_messages: list[BaseMessage] = list(lc_messages)
 
     async for update in agent.astream(
@@ -170,6 +203,13 @@ async def invoke_agent(
         for node, payload in update.items():
             new_msgs = payload.get("messages", []) if isinstance(payload, dict) else []
             all_messages.extend(new_msgs)
+
+            # Acumular el resumen de razonamiento de cualquier AIMessage (modo razonador).
+            for m in new_msgs:
+                if isinstance(m, AIMessage):
+                    rz = _content_reasoning(m.content)
+                    if rz:
+                        reasoning_parts.append(rz)
 
             if node == "agent":
                 # Inspeccionar tool_calls del último AIMessage para detectar ask_user
@@ -208,4 +248,5 @@ async def invoke_agent(
         tool_calls=tool_calls_info,
         prompt_key=ANSWER_PROMPT_KEY,
         prompt_version=prompt_version,
+        reasoning="\n\n".join(reasoning_parts) or None,
     )
