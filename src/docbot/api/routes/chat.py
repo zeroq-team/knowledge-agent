@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 import unicodedata
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from docbot.agent.scope import allowed_domains_var, build_scope_directive, parse_scopes
 from docbot.config import get_settings
@@ -170,6 +172,8 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             command=command,
             latency_ms=latency_ms,
             model=model,
+            token_usage=result.token_usage,
+            steps=result.steps,
         )
 
         return ChatResponse(
@@ -184,6 +188,8 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
             prompt_key=result.prompt_key,
             prompt_version=result.prompt_version,
             model=model,
+            steps=result.steps,
+            token_usage=result.token_usage,
         )
 
     # Respuesta final con citas embebidas en el texto.
@@ -209,6 +215,9 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         command=command,
         latency_ms=latency_ms,
         model=model,
+        token_usage=result.token_usage,
+        reasoning=result.reasoning,
+        steps=result.steps,
     )
 
     return ChatResponse(
@@ -224,6 +233,152 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         prompt_version=result.prompt_version,
         model=model,
         reasoning=result.reasoning,
+        steps=result.steps,
+        token_usage=result.token_usage,
+    )
+
+
+def _sse(obj: dict) -> str:
+    """Serializa un evento como frame SSE."""
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
+    """Versión streaming de /chat (SSE, estilo Rovo).
+
+    Emite eventos `step` (razonamiento + tools) y `answer_delta` (texto final) en
+    vivo, y un evento `done` final con los ids persistidos, citas y metadata
+    (reasoning, steps, token_usage). La persistencia ocurre al cerrar el stream,
+    no antes. Mismo contrato de auth/scoping que /chat.
+    """
+    from docbot.agent.graph import stream_agent
+
+    settings = get_settings()
+    if settings.proxy_token and request.headers.get("X-ZeroQ-Proxy-Token") != settings.proxy_token:
+        raise HTTPException(status_code=401, detail="Proxy token requerido/ inválido")
+
+    command = None
+    command_prompt = None
+    if body.command:
+        command, command_prompt = await _resolve_command_prompt(body.command)
+
+    user_email = request.headers.get("X-ZeroQ-User") or None
+    scopes = parse_scopes(request.headers.get("X-ZeroQ-Scopes"))
+    scope_directive = build_scope_directive(scopes)
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    user_content = _last_user_content(messages)
+    agent_version = build_version()
+    model = settings.rag_model
+
+    async def event_gen():
+        t0 = time.time()
+        token = allowed_domains_var.set(scopes)
+        try:
+            async for ev in stream_agent(
+                messages, command_prompt=command_prompt, scope_directive=scope_directive
+            ):
+                etype = ev.get("type")
+
+                if etype in ("step", "answer_delta"):
+                    yield _sse(ev)
+
+                elif etype == "clarification":
+                    latency_ms = int((time.time() - t0) * 1000)
+                    raw_options = ev.get("options") or []
+                    options = [{"id": _slugify(o), "label": o} for o in raw_options] or None
+                    conversation_id, message_id = await history_store.record_exchange(
+                        conversation_id=body.conversation_id,
+                        user_email=user_email,
+                        user_content=user_content,
+                        assistant_content=ev.get("question", ""),
+                        citations=[],
+                        tools_used=ev.get("tool_calls", []),
+                        prompt_key=ev.get("prompt_key"),
+                        prompt_version=ev.get("prompt_version"),
+                        agent_version=agent_version,
+                        command=command,
+                        latency_ms=latency_ms,
+                        model=model,
+                        token_usage=ev.get("token_usage", []),
+                        steps=ev.get("steps", []),
+                    )
+                    yield _sse({
+                        "type": "done",
+                        "kind": "clarification",
+                        "reply": ev.get("question", ""),
+                        "clarification": {
+                            "question": ev.get("question", ""),
+                            "options": options,
+                            "allow_free_text": True,
+                            "reason": ev.get("reason"),
+                        },
+                        "command": command,
+                        "conversation_id": conversation_id or None,
+                        "message_id": message_id or None,
+                        "agent_version": agent_version,
+                        "model": model,
+                        "prompt_version": ev.get("prompt_version"),
+                        "steps": ev.get("steps", []),
+                        "token_usage": ev.get("token_usage", []),
+                    })
+                    return
+
+                elif etype == "final":
+                    latency_ms = int((time.time() - t0) * 1000)
+                    reply = ev.get("reply", "")
+                    citations = _extract_citations(reply)
+                    logger.info(
+                        "agent_response_stream",
+                        tools_used=[tc["tool"] for tc in ev.get("tool_calls", [])],
+                        citations=len(citations),
+                        command=command,
+                    )
+                    conversation_id, message_id = await history_store.record_exchange(
+                        conversation_id=body.conversation_id,
+                        user_email=user_email,
+                        user_content=user_content,
+                        assistant_content=reply,
+                        citations=[c.model_dump() for c in citations],
+                        tools_used=ev.get("tool_calls", []),
+                        prompt_key=ev.get("prompt_key"),
+                        prompt_version=ev.get("prompt_version"),
+                        agent_version=agent_version,
+                        command=command,
+                        latency_ms=latency_ms,
+                        model=model,
+                        token_usage=ev.get("token_usage", []),
+                        reasoning=ev.get("reasoning"),
+                        steps=ev.get("steps", []),
+                    )
+                    yield _sse({
+                        "type": "done",
+                        "kind": "answer",
+                        "reply": reply,
+                        "citations": [c.model_dump() for c in citations],
+                        "command": command,
+                        "conversation_id": conversation_id or None,
+                        "message_id": message_id or None,
+                        "agent_version": agent_version,
+                        "model": model,
+                        "prompt_key": ev.get("prompt_key"),
+                        "prompt_version": ev.get("prompt_version"),
+                        "reasoning": ev.get("reasoning"),
+                        "steps": ev.get("steps", []),
+                        "token_usage": ev.get("token_usage", []),
+                    })
+                    return
+
+                elif etype == "error":
+                    yield _sse({"type": "error", "detail": ev.get("detail")})
+                    return
+        finally:
+            allowed_domains_var.reset(token)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

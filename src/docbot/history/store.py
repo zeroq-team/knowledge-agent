@@ -26,6 +26,36 @@ def _valid_uuid(value: str | None) -> str | None:
         return None
 
 
+async def _load_prices(conn) -> dict[str, dict]:
+    """Mapa {model: {input_usd_per_1m, output_usd_per_1m}} desde model_prices."""
+    try:
+        rows = await conn.fetch(
+            "SELECT model, input_usd_per_1m, output_usd_per_1m FROM model_prices"
+        )
+    except Exception:  # noqa: BLE001 — tabla ausente en instancias viejas → sin costo
+        return {}
+    return {
+        r["model"]: {
+            "input_usd_per_1m": float(r["input_usd_per_1m"] or 0),
+            "output_usd_per_1m": float(r["output_usd_per_1m"] or 0),
+        }
+        for r in rows
+    }
+
+
+def _cost_of(token_usage: list[dict] | None, prices: dict[str, dict]) -> float:
+    """Costo USD de una lista de entradas token_usage cruzada con la tabla de precios.
+
+    Los reasoning_tokens ya están dentro de output_tokens (OpenAI), no se cobran aparte.
+    """
+    total = 0.0
+    for e in token_usage or []:
+        p = prices.get(e.get("model", ""), {})
+        total += (e.get("input_tokens", 0) or 0) / 1e6 * p.get("input_usd_per_1m", 0.0)
+        total += (e.get("output_tokens", 0) or 0) / 1e6 * p.get("output_usd_per_1m", 0.0)
+    return round(total, 6)
+
+
 async def record_exchange(
     *,
     conversation_id: str | None,
@@ -40,6 +70,9 @@ async def record_exchange(
     command: str | None,
     latency_ms: int | None,
     model: str | None = None,
+    token_usage: list[dict[str, Any]] | None = None,
+    reasoning: str | None = None,
+    steps: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """Registra el último turno (user + assistant). Devuelve (conversation_id, assistant_message_id).
 
@@ -51,6 +84,8 @@ async def record_exchange(
     cid = _valid_uuid(conversation_id)
     citations_json = json.dumps(citations or [])
     tools_json = json.dumps(tools_used or [])
+    token_usage_json = json.dumps(token_usage or [])
+    steps_json = json.dumps(steps or [])
 
     try:
         async with pool.acquire() as conn:
@@ -92,9 +127,11 @@ async def record_exchange(
                     """
                     INSERT INTO chat_messages (
                         conversation_id, role, content, citations, tools_used,
-                        prompt_key, prompt_version, agent_version, command, latency_ms, model
+                        prompt_key, prompt_version, agent_version, command, latency_ms, model,
+                        token_usage, reasoning, steps
                     )
-                    VALUES ($1, 'assistant', $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10)
+                    VALUES ($1, 'assistant', $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10,
+                            $11::jsonb, $12, $13::jsonb)
                     RETURNING id
                     """,
                     cid,
@@ -107,6 +144,9 @@ async def record_exchange(
                     command,
                     latency_ms,
                     model,
+                    token_usage_json,
+                    reasoning,
+                    steps_json,
                 )
         return cid, str(message_id)
     except Exception:  # noqa: BLE001 — la telemetría nunca debe tumbar el chat
@@ -182,7 +222,18 @@ async def list_conversations(
             (SELECT count(*) FROM chat_messages m JOIN message_feedback f ON f.message_id = m.id
                 WHERE m.conversation_id = c.id AND f.rating = 1) AS up_count,
             (SELECT count(*) FROM chat_messages m JOIN message_feedback f ON f.message_id = m.id
-                WHERE m.conversation_id = c.id AND f.rating = -1) AS down_count
+                WHERE m.conversation_id = c.id AND f.rating = -1) AS down_count,
+            (SELECT COALESCE(SUM((e->>'total_tokens')::bigint), 0)
+                FROM chat_messages m, jsonb_array_elements(m.token_usage) e
+                WHERE m.conversation_id = c.id) AS total_tokens,
+            (SELECT COALESCE(SUM(
+                    (e->>'input_tokens')::numeric / 1e6 * COALESCE(p.input_usd_per_1m, 0)
+                  + (e->>'output_tokens')::numeric / 1e6 * COALESCE(p.output_usd_per_1m, 0)
+                ), 0)
+                FROM chat_messages m
+                CROSS JOIN LATERAL jsonb_array_elements(m.token_usage) e
+                LEFT JOIN model_prices p ON p.model = e->>'model'
+                WHERE m.conversation_id = c.id) AS cost_usd
         FROM conversations c
         {where}
         ORDER BY c.last_at DESC
@@ -215,31 +266,47 @@ async def get_conversation(conversation_id: str) -> dict | None:
     conv = await pool.fetchrow("SELECT * FROM conversations WHERE id = $1", cid)
     if conv is None:
         return None
-    rows = await pool.fetch(
-        """
-        SELECT
-            m.id, m.role, m.content, m.citations, m.tools_used, m.prompt_key,
-            m.prompt_version, m.agent_version, m.command, m.latency_ms, m.model, m.created_at,
-            f.rating AS feedback_rating, f.comment AS feedback_comment
-        FROM chat_messages m
-        LEFT JOIN message_feedback f ON f.message_id = m.id
-        WHERE m.conversation_id = $1
-        ORDER BY m.created_at
-        """,
-        cid,
-    )
+    async with pool.acquire() as conn:
+        prices = await _load_prices(conn)
+        rows = await conn.fetch(
+            """
+            SELECT
+                m.id, m.role, m.content, m.citations, m.tools_used, m.prompt_key,
+                m.prompt_version, m.agent_version, m.command, m.latency_ms, m.model,
+                m.token_usage, m.reasoning, m.steps, m.created_at,
+                f.rating AS feedback_rating, f.comment AS feedback_comment
+            FROM chat_messages m
+            LEFT JOIN message_feedback f ON f.message_id = m.id
+            WHERE m.conversation_id = $1
+            ORDER BY m.created_at
+            """,
+            cid,
+        )
     messages = []
+    conv_tokens = 0
+    conv_cost = 0.0
     for r in rows:
         d = dict(r)
-        # citations/tools_used vienen como texto JSON desde asyncpg (columna jsonb).
-        for jf in ("citations", "tools_used"):
+        # citations/tools_used/token_usage/steps vienen como texto JSON (columna jsonb).
+        for jf in ("citations", "tools_used", "token_usage", "steps"):
             if isinstance(d.get(jf), str):
                 try:
                     d[jf] = json.loads(d[jf])
                 except (ValueError, TypeError):
                     d[jf] = []
+            elif d.get(jf) is None:
+                d[jf] = []
+        d["cost_usd"] = _cost_of(d.get("token_usage"), prices)
+        d["total_tokens"] = sum(e.get("total_tokens", 0) or 0 for e in d.get("token_usage") or [])
+        conv_tokens += d["total_tokens"]
+        conv_cost += d["cost_usd"]
         messages.append(d)
-    return {**dict(conv), "messages": messages}
+    return {
+        **dict(conv),
+        "messages": messages,
+        "total_tokens": conv_tokens,
+        "cost_usd": round(conv_cost, 6),
+    }
 
 
 async def feedback_stats() -> dict:
@@ -269,4 +336,98 @@ async def feedback_stats() -> dict:
         "down": totals["down"],
         "total": totals["total"],
         "recent_negative": [dict(r) for r in recent_negative],
+    }
+
+
+# ---------- Precios por modelo (editables sin release) ----------
+
+async def list_model_prices() -> list[dict]:
+    """Tabla de precios por modelo (USD por 1M de tokens)."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT model, input_usd_per_1m, output_usd_per_1m, updated_at"
+        " FROM model_prices ORDER BY model"
+    )
+    return [
+        {
+            "model": r["model"],
+            "input_usd_per_1m": float(r["input_usd_per_1m"] or 0),
+            "output_usd_per_1m": float(r["output_usd_per_1m"] or 0),
+            "updated_at": r["updated_at"],
+        }
+        for r in rows
+    ]
+
+
+async def upsert_model_price(
+    model: str, input_usd_per_1m: float, output_usd_per_1m: float
+) -> dict:
+    """Crea o actualiza el precio de un modelo. Devuelve la fila resultante."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO model_prices (model, input_usd_per_1m, output_usd_per_1m, updated_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (model) DO UPDATE
+            SET input_usd_per_1m = EXCLUDED.input_usd_per_1m,
+                output_usd_per_1m = EXCLUDED.output_usd_per_1m,
+                updated_at = now()
+        RETURNING model, input_usd_per_1m, output_usd_per_1m, updated_at
+        """,
+        model,
+        input_usd_per_1m,
+        output_usd_per_1m,
+    )
+    logger.info("model_price_upserted", model=model)
+    return {
+        "model": row["model"],
+        "input_usd_per_1m": float(row["input_usd_per_1m"] or 0),
+        "output_usd_per_1m": float(row["output_usd_per_1m"] or 0),
+        "updated_at": row["updated_at"],
+    }
+
+
+async def usage_stats(days: int = 30) -> dict:
+    """Resumen agregado de gasto del docbot: por modelo y totales, en un período.
+
+    `days`: ventana hacia atrás (por created_at del mensaje). 0 = todo el histórico.
+    """
+    pool = get_pool()
+    window = "" if days <= 0 else f"AND m.created_at >= now() - interval '{int(days)} days'"
+    rows = await pool.fetch(
+        f"""
+        SELECT
+            e->>'model' AS model,
+            SUM((e->>'input_tokens')::bigint)   AS input_tokens,
+            SUM((e->>'output_tokens')::bigint)  AS output_tokens,
+            SUM((e->>'reasoning_tokens')::bigint) AS reasoning_tokens,
+            SUM((e->>'total_tokens')::bigint)   AS total_tokens,
+            SUM(
+                (e->>'input_tokens')::numeric / 1e6 * COALESCE(p.input_usd_per_1m, 0)
+              + (e->>'output_tokens')::numeric / 1e6 * COALESCE(p.output_usd_per_1m, 0)
+            ) AS cost_usd
+        FROM chat_messages m
+        CROSS JOIN LATERAL jsonb_array_elements(m.token_usage) e
+        LEFT JOIN model_prices p ON p.model = e->>'model'
+        WHERE m.role = 'assistant' {window}
+        GROUP BY e->>'model'
+        ORDER BY cost_usd DESC NULLS LAST
+        """,
+    )
+    by_model = [
+        {
+            "model": r["model"],
+            "input_tokens": int(r["input_tokens"] or 0),
+            "output_tokens": int(r["output_tokens"] or 0),
+            "reasoning_tokens": int(r["reasoning_tokens"] or 0),
+            "total_tokens": int(r["total_tokens"] or 0),
+            "cost_usd": round(float(r["cost_usd"] or 0), 6),
+        }
+        for r in rows
+    ]
+    return {
+        "days": days,
+        "by_model": by_model,
+        "total_tokens": sum(m["total_tokens"] for m in by_model),
+        "cost_usd": round(sum(m["cost_usd"] for m in by_model), 6),
     }

@@ -8,6 +8,7 @@ import structlog
 from openai import AsyncOpenAI
 
 from docbot.config import Settings
+from docbot import usage as usage_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -47,6 +48,15 @@ async def embed_texts(
                     model=settings.embedding_model,
                 )
                 all_embeddings.extend([d.embedding for d in resp.data])
+                # Telemetría de tokens del retrieval (no-op fuera de un turno de chat).
+                _u = getattr(resp, "usage", None)
+                if _u is not None:
+                    usage_tracker.record(
+                        settings.embedding_model,
+                        "embeddings",
+                        input_tokens=getattr(_u, "prompt_tokens", 0) or 0,
+                        total_tokens=getattr(_u, "total_tokens", 0) or 0,
+                    )
                 logger.debug(
                     "embeddings_batch_ok",
                     batch_start=start,

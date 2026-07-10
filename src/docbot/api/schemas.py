@@ -134,6 +134,15 @@ class ChatResponse(BaseModel):
     prompt_version: int | None = None
     model: str | None = None
     reasoning: str | None = None
+    steps: list[dict] = []
+    token_usage: list[dict] = []
+
+
+# ---------- /admin/model-prices ----------
+
+class ModelPriceUpdate(BaseModel):
+    input_usd_per_1m: float = Field(ge=0)
+    output_usd_per_1m: float = Field(ge=0)
 
 
 # ---------- /translate ----------

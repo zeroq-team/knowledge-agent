@@ -9,7 +9,12 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from docbot.api.schemas import PromptActivate, PromptSuggestRequest, PromptVersionCreate
+from docbot.api.schemas import (
+    ModelPriceUpdate,
+    PromptActivate,
+    PromptSuggestRequest,
+    PromptVersionCreate,
+)
 from docbot.config import get_settings
 from docbot.history import store as history_store
 from docbot.prompts import improve as prompt_improve
@@ -147,3 +152,32 @@ async def delete_conversation(
 async def get_feedback_stats(authorization: str | None = Header(default=None)) -> dict:
     _require_admin(authorization)
     return await history_store.feedback_stats()
+
+
+# ---------- Gasto de tokens / precios por modelo ----------
+
+@router.get("/usage-stats")
+async def get_usage_stats(
+    authorization: str | None = Header(default=None),
+    days: int = Query(default=30, ge=0, le=365),
+) -> dict:
+    """Resumen agregado de gasto (tokens + costo USD) por modelo. days=0 = todo el histórico."""
+    _require_admin(authorization)
+    return await history_store.usage_stats(days=days)
+
+
+@router.get("/model-prices")
+async def get_model_prices(authorization: str | None = Header(default=None)) -> dict:
+    _require_admin(authorization)
+    return {"prices": await history_store.list_model_prices()}
+
+
+@router.put("/model-prices/{model}")
+async def put_model_price(
+    model: str, body: ModelPriceUpdate, authorization: str | None = Header(default=None)
+) -> dict:
+    """Crea o actualiza el precio (USD por 1M tokens) de un modelo. Editable sin release."""
+    _require_admin(authorization)
+    return await history_store.upsert_model_price(
+        model, body.input_usd_per_1m, body.output_usd_per_1m
+    )
